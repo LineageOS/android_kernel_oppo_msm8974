@@ -124,6 +124,7 @@ struct gs_port {
 	int write_allocated;
 	struct gs_buf		port_write_buf;
 	wait_queue_head_t	drain_wait;	/* wait while writes drain */
+	bool                    write_busy;
 
 	/* REVISIT this state ... */
 	struct usb_cdc_line_coding port_line_coding;	/* 8-N-1 etc */
@@ -370,7 +371,7 @@ __acquires(&port->port_lock)
 	static long 		prev_len;
 	bool			do_tty_wake = false;
 
-	while (!list_empty(pool)) {
+	while (!port->write_busy && !list_empty(pool)) {
 		struct usb_request	*req;
 		int			len;
 
@@ -419,6 +420,7 @@ __acquires(&port->port_lock)
 		 * NOTE that we may keep sending data for a while after
 		 * the TTY closed (dev->ioport->port_tty is NULL).
 		 */
+		port->write_busy = true;
 		spin_unlock(&port->port_lock);
 		status = usb_ep_queue(in, req, GFP_ATOMIC);
 		spin_lock(&port->port_lock);
@@ -432,6 +434,8 @@ __acquires(&port->port_lock)
 			gs_free_req(in, req);
 			break;
 		}
+		port->write_busy = false;
+
 		if (status) {
 			pr_debug("%s: %s %s err %d\n",
 					__func__, "queue", in->name, status);
