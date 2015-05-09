@@ -57,11 +57,6 @@
 #define MAX_LED_TRIGGERS 3
 #define MAX_I2C_REG_SET           12
 
-typedef enum sensor_stats_type {
-	YRGB,
-	YYYY,
-} sensor_stats_type_t;
-
 enum flash_type {
 	LED_FLASH = 1,
 	STROBE_FLASH,
