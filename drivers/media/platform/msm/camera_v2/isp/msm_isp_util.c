@@ -1209,6 +1209,7 @@ int msm_isp_get_bit_per_pixel(uint32_t output_format)
 	case V4L2_PIX_FMT_QRGGB10:
 	case V4L2_PIX_FMT_Y10:
 	case V4L2_PIX_FMT_Y10BPACK:
+		return 10;
 	case V4L2_PIX_FMT_SBGGR12:
 	case V4L2_PIX_FMT_SGBRG12:
 	case V4L2_PIX_FMT_SGRBG12:
