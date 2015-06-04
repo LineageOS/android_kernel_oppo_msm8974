@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-/include/  "msm8974-regulator.dtsi"
-
 &soc {
 	led_flash0: qcom,camera-led-flash {
 		cell-index = <0>;
