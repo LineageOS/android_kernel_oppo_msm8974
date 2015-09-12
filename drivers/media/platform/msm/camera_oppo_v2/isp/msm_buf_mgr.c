@@ -48,11 +48,8 @@ static struct msm_isp_bufq *msm_isp_get_bufq(
 {
 	struct msm_isp_bufq *bufq = NULL;
 	uint32_t bufq_index = bufq_handle & 0xFF;
-
-	/* bufq_handle cannot be 0 */
-	if ((bufq_handle == 0) ||
-		(bufq_index > buf_mgr->num_buf_q))
-		return NULL;
+	if (bufq_index > buf_mgr->num_buf_q)
+		return bufq;
 
 	bufq = &buf_mgr->bufq[bufq_index];
 	if (bufq->bufq_handle == bufq_handle)
@@ -646,7 +643,7 @@ static int msm_isp_buf_enqueue(struct msm_isp_buf_mgr *buf_mgr,
 		}
 	} else {
 		bufq = msm_isp_get_bufq(buf_mgr, info->handle);
-		if (BUF_SRC(bufq->stream_id)) {
+		if (bufq && BUF_SRC(bufq->stream_id)) {
 			rc = msm_isp_put_buf(buf_mgr,
 					info->handle, info->buf_idx);
 			if (rc < 0) {
