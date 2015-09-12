@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,10 +30,8 @@
 struct msm_actuator_ctrl_t;
 
 enum msm_actuator_state_t {
-	ACT_ENABLE_STATE,
-	ACT_OPS_ACTIVE,
-	ACT_OPS_INACTIVE,
-	ACT_DISABLE_STATE,
+	ACTUATOR_POWER_DOWN,
+	ACTUATOR_POWER_UP,
 };
 
 struct msm_actuator_func_tbl {
@@ -43,7 +41,7 @@ struct msm_actuator_func_tbl {
 	int32_t (*actuator_init_step_table)(struct msm_actuator_ctrl_t *,
 		struct msm_actuator_set_info_t *);
 	int32_t (*actuator_init_focus)(struct msm_actuator_ctrl_t *,
-		uint16_t, enum msm_actuator_data_type, struct reg_settings_t *);
+		uint16_t, struct reg_settings_t *);
 	int32_t (*actuator_set_default_focus) (struct msm_actuator_ctrl_t *,
 			struct msm_actuator_move_params_t *);
 	int32_t (*actuator_move_focus) (struct msm_actuator_ctrl_t *,
@@ -101,9 +99,13 @@ struct msm_actuator_ctrl_t {
 	uint16_t i2c_tbl_index;
 	enum cci_i2c_master_t cci_master;
 	uint32_t subdev_id;
-	uint16_t current_lens_pos;
-	enum msm_actuator_state_t actuator_state;
 	struct msm_actuator_vreg vreg_cfg;
+#ifdef VENDOR_EDIT
+/*shijie.zhuo,2014/09/10,Add for close camera click*/
+    uint16_t current_lens_pos;
+    uint32_t hw_params;
+#endif
+	enum msm_actuator_state_t actuator_state;
 };
 
 #endif
