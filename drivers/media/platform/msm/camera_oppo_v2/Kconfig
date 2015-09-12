@@ -101,24 +101,6 @@ config MSM_ISPIF_V1
           of any CID of MSM_CSI22_HEADER can be routed to of pixel
           or raw data interface in VFE.
 
-config S5K3L1YX
-	bool "Sensor S5K3L1YX (BAYER 12M)"
-	depends on MSMB_CAMERA
-	---help---
-		Samsung 12 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 1984 * 1508 at 30 fps,
-		snapshot config = 4000 * 3000 at 20 fps,
-		hfr video at 60, 90 and 120 fps.
-
-config IMX135
-	bool "Sensor IMX135 (BAYER 12M)"
-	depends on MSMB_CAMERA
-	---help---
-		Sony 12 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 2104 x 1560 at 49 fps,
-		snapshot config = 4208 x 3120 at 24 fps,
-		Video HDR support.
-
 config IMX134
 	bool "Sensor IMX134 (BAYER 8M)"
 	depends on MSMB_CAMERA
@@ -127,15 +109,6 @@ config IMX134
 		4 mipi lanes full resolution @30fps and
 		HFR @60fps and @120fps
 		Video HDR support.
-
-config OV2720
-	bool "Sensor OV2720 (BAYER 2M)"
-	depends on MSMB_CAMERA
-	---help---
-		OmniVision 2 MP Bayer Sensor, supports 2 mipi lanes,
-		preview and snapshot config at 1932 * 1092 at 30 fps,
-		hfr video at 60, 90 and 120 fps. This sensor driver does
-		not support auto focus.
 
 config OV9724
 	bool "Sensor OV9724 (BAYER 2M)"
@@ -163,23 +136,6 @@ config OV5648
 		preview set to 1296*972 at 30 fps,
 		snapshot set to 2592*1944 at 12 fps,
 		This sensor driver does not support auto focus.
-
-config IMX214
-	bool "Sensor IMX214 (BAYER 12M)"
-	depends on MSMB_CAMERA
-	---help---
-		Sony 12 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 2104 x 1560 at 49 fps,
-		snapshot config = 4208 x 3120 at 24 fps,
-		Video HDR support.
-
-config OV16825
-	bool "Sensor OV16825 (BAYER 16M)"
-	depends on MSMB_CAMERA
-	---help---
-		OV 16 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 2104 x 1560 at 49 fps,
-		snapshot config = 4608 x 3456 at 24 fps.
 
 config MT9M114
 	bool "Sensor MT9M114 (YUV 1.26MP)"
@@ -266,17 +222,3 @@ config MSM_GEMINI
 	depends on MSMB_CAMERA && (ARCH_MSM7X30 || ARCH_MSM8X60 || ARCH_MSM8960)
 	---help---
 	  Enables support for the Gemini JPEG encoder engine for 8x60.
-
-config MSM_CAMERA_LED_CCI
-	bool "led flash use cci"
-	depends on MSMB_CAMERA
-	default n
-	---help---
-		led flash driver for third party driver IC
-
-config MSM_CAMERA_LED_PM
-	bool "led flash use pmic"
-	depends on MSMB_CAMERA
-	default n
-	---help---
-		led flash driver for third party driver IC

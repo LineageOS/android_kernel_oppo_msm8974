@@ -31,14 +31,19 @@
 int msm_jpeg_platform_set_clk_rate(struct msm_jpeg_device *pgmn_dev,
 		long clk_rate)
 {
-	struct msm_cam_clk_info jpeg_core_clk_info[] = {
-		{"core_clk", JPEG_CLK_RATE, 0}
-	};
+	int rc = 0;
+	struct clk *jpeg_clk;
 
-	jpeg_core_clk_info[0].clk_rate = clk_rate;
+	jpeg_clk = clk_get(&pgmn_dev->pdev->dev, "core_clk");
+	if (IS_ERR(jpeg_clk)) {
+		JPEG_PR_ERR("%s get failed\n", "core_clk");
+		rc = PTR_ERR(jpeg_clk);
+		return rc;
+	}
 
-	return msm_cam_clk_enable(&pgmn_dev->pdev->dev, jpeg_core_clk_info,
-			pgmn_dev->jpeg_clk, ARRAY_SIZE(jpeg_core_clk_info), 1);
+	rc = clk_set_rate(jpeg_clk, clk_rate);
+
+	return rc;
 }
 
 void msm_jpeg_platform_p2v(struct msm_jpeg_device *pgmn_dev, struct file  *file,
@@ -52,7 +57,7 @@ void msm_jpeg_platform_p2v(struct msm_jpeg_device *pgmn_dev, struct file  *file,
 uint32_t msm_jpeg_platform_v2p(struct msm_jpeg_device *pgmn_dev, int fd,
 	uint32_t len, struct file **file_p, struct ion_handle **ionhandle,
 	int domain_num) {
-	dma_addr_t paddr;
+	unsigned long paddr;
 	unsigned long size;
 	int rc;
 	*ionhandle = ion_import_dma_buf(pgmn_dev->jpeg_client, fd);
