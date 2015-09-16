@@ -1,0 +1,227 @@
+/*
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&pm8941_lsid1 {	
+/*OPPO yuyi 2013-09-27 modify begin for RGB-leds*/
+/*#ifdef VENDOR_EDIT_CONFIG*/
+	qcom,leds@d000 {
+		status = "okay";
+		qcom,rgb_0 {
+			label = "rgb";
+			linux,name = "rgb_red";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <6>;
+			qcom,duty-ms = <200>;
+			qcom,start-idx = <1>;
+			qcom,idx-len = <10>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00 00 00 
+							01 03 05 08 0B 10 14 19 1E 24 2A
+							30 38 40 49 52 5B 64 64 
+							64 64 64 5B 52 49 40 38 30  
+							2A 24 1E 19 14 10 0B 08 05 03 01
+							00 00 00 00 00 00 00 00 00 00 00];
+			qcom,max-current = <6>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <50>;
+			qcom,default-state = "off";
+			qcom,id = <3>;
+			qcom,pwm-us = <1000>;
+			qcom,use-blink;
+		};
+
+		qcom,rgb_1 {
+			label = "rgb";
+			linux,name = "rgb_green";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <5>;
+			qcom,duty-ms = <200>;
+			qcom,start-idx = <1>;
+			qcom,idx-len = <10>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00 00 00 
+							01 03 05 08 0B 10 14 19 1E 24 2A
+							30 38 40 49 52 5B 64 64 
+							64 64 64 5B 52 49 40 38 30  
+							2A 24 1E 19 14 10 0B 08 05 03 01
+							00 00 00 00 00 00 00 00 00 00 00];
+			qcom,max-current = <6>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <50>;
+			qcom,default-state = "off";
+			qcom,id = <4>;
+			qcom,pwm-us = <1000>;
+			qcom,use-blink;
+		};
+/*deleted by songxh for the pwm channel used by camera motor 2014-07-01*/
+/*		qcom,rgb_2 {
+			label = "rgb";
+			linux,name = "rgb_blue";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <4>;
+			qcom,duty-ms = <200>;
+			qcom,start-idx = <1>;
+			qcom,idx-len = <10>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00 00 00 
+							01 03 05 08 0B 10 14 19 1E 24 2A
+							30 38 40 49 52 5B 64 64 
+							64 64 64 5B 52 49 40 38 30  
+							2A 24 1E 19 14 10 0B 08 05 03 01
+							00 00 00 00 00 00 00 00 00 00 00];
+			qcom,max-current = <6>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <50>;
+			qcom,default-state = "off";
+			qcom,id = <5>;
+			qcom,pwm-us = <1000>;
+			qcom,use-blink;
+		};*/
+/*deleted by songxh for the pwm channel used by camera motor 2014-07-01*/
+	};
+/*#endif*/	
+/*OPPO yuyi 2013-09-27 modify end for RGB-leds*/
+
+	qcom,leds@d100 {
+		status = "disabled";
+	};
+
+	qcom,leds@d200 {
+		status = "disabled";
+	};
+
+	qcom,leds@d300 {
+		status = "okay";
+		pm8941_flash0: qcom,flash_0 {
+			qcom,max-current = <1000>;
+			qcom,default-state = "off";
+			qcom,headroom = <3>;
+			qcom,duration = <1280>;
+			qcom,clamp-curr = <200>;
+			qcom,startup-dly = <3>;
+			qcom,safety-timer;
+			label = "flash";
+			linux,default-trigger =
+				"flash0_trigger";
+			qcom,id = <1>;
+			linux,name = "led:flash_0";
+			qcom,current = <500>;// 625
+		};
+
+		pm8941_flash1: qcom,flash_1 {
+			qcom,max-current = <1000>;
+			qcom,default-state = "off";
+			qcom,headroom = <3>;
+			qcom,duration = <1280>;
+			qcom,clamp-curr = <200>;
+			qcom,startup-dly = <3>;
+			qcom,safety-timer;
+			linux,default-trigger =
+				"flash1_trigger";
+			label = "flash";
+			qcom,id = <2>;
+			linux,name = "led:flash_1";
+			qcom,current = <500>;// 625
+		};
+
+		pm8941_torch: qcom,flash_torch {
+			qcom,max-current = <200>;
+			qcom,default-state = "off";
+			qcom,headroom = <0>;
+			qcom,startup-dly = <1>;
+			linux,default-trigger =
+				"torch_trigger";
+			label = "flash";
+			qcom,id = <2>;
+			linux,name = "led:flash_torch";
+			qcom,current = <30>;// 200
+			qcom,torch-enable;
+		};
+	};
+
+	qcom,leds@d400 {
+		status = "disabled";
+	};
+
+	qcom,leds@d500 {
+		status = "disabled";
+	};
+
+	qcom,leds@d600 {
+		status = "disabled";
+	};
+
+	qcom,leds@d700 {
+		status = "disabled";
+	};
+/*VENDOR_EDIT*/
+/*OPPO yuyi 2013-09-27 modify begin for button-backlight*/		
+	qcom,leds@e200 {
+		status = "okay";
+
+		qcom,kpdbl1 {
+			label = "kpdbl";
+			linux,name = "button-backlight";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <8>;
+			qcom,pwm-us = <1000>;
+			qcom,id = <7>;
+			/*OPPO yuyi 2013-11-26 modify current for button-backlight*/
+			/*qcom,max-current = <20>;*/
+			qcom,max-current = <15>;
+			/*OPPO yuyi 2013-11-26 modify end for button-backlight*/
+			qcom,row-id = <0>;
+			qcom,row-src-en;
+			qcom,always-on;
+		};
+/*OPPO yuyi 2013-09-27 modify end for button-backlight*/
+		qcom,kpdbl2 {
+			label = "kpdbl";
+			linux,name = "kpdbl-lut-2";
+			qcom,mode = "lpg";
+			qcom,pwm-channel = <9>;
+			qcom,pwm-us = <1000>;
+			qcom,start-idx = <1>;
+			qcom,duty-pcts = [00 00 00 00 64
+					64 00 00 00 00];
+			qcom,id = <7>;
+			qcom,max-current = <20>;
+			qcom,row-id = <1>;
+			qcom,row-src-en;
+		};
+
+		qcom,kpdbl3 {
+			label = "kpdbl";
+			linux,name = "kpdbl-pwm-3";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <10>;
+			qcom,pwm-us = <1000>;
+			qcom,id = <7>;
+			qcom,max-current = <20>;
+			qcom,row-id = <2>;
+			qcom,row-src-en;
+		};
+
+		qcom,kpdbl4 {
+			label = "kpdbl";
+			linux,name = "kpdbl-pwm-4";
+			qcom,mode = "pwm";
+			qcom,pwm-channel = <11>;
+			qcom,pwm-us = <1000>;
+			qcom,id = <7>;
+			qcom,max-current = <20>;
+			qcom,row-id = <3>;
+			qcom,row-src-en;
+		};
+	};
+};
