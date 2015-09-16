@@ -47,6 +47,17 @@
 
 #include "queue.h"
 
+#ifdef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2013/10/24, Add for eMMC and DDR device information
+#include <mach/device_info.h>
+#include <linux/pcb_version.h>
+#endif /* CONFIG_MACH_OPPO */
+
+#ifdef CONFIG_MACH_OPPO
+/* OPPO 2014-11-06 sjc Add begin for T card problem */
+#include <linux/bitops.h>
+#endif
+
 MODULE_ALIAS("mmc:block");
 #ifdef MODULE_PARAM_PREFIX
 #undef MODULE_PARAM_PREFIX
@@ -144,6 +155,8 @@ enum {
 	MMC_PACKED_N_ZERO,
 	MMC_PACKED_N_SINGLE,
 };
+
+unsigned int		mmc_mid;//added by songxh
 
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
@@ -1464,6 +1477,13 @@ static inline void mmc_apply_rel_rw(struct mmc_blk_request *brq,
 	}
 }
 
+#ifdef CONFIG_MACH_OPPO
+#if 0 //sjc20141106 delete
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/28, Add for solve QT bug(ID:390597): Bad micro SD card cause the phone to suspend/wakeup abnormal
+static int bad_micro_sd_card = 0;
+#endif
+#endif /* CONFIG_MACH_OPPO */
+
 #define CMD_ERRORS							\
 	(R1_OUT_OF_RANGE |	/* Command argument out of range */	\
 	 R1_ADDRESS_ERROR |	/* Misaligned address */		\
@@ -1493,6 +1513,19 @@ static int mmc_blk_err_check(struct mmc_card *card,
 	 */
 	if (brq->sbc.error || brq->cmd.error || brq->stop.error ||
 	    brq->data.error) {
+
+#ifdef CONFIG_MACH_OPPO
+#if 0 //sjc20141106 delete
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/28, Add for solve QT bug(ID:390597): Bad micro SD card cause the phone to suspend/wakeup abnormal
+		if ((card->host->index == 1) && bad_micro_sd_card) {
+			if (req) {
+				printk(KERN_ERR"%s: bad sd card had been detected, return MMC_BLK_ABORT\n", __func__);
+				return MMC_BLK_ABORT;
+			}
+		}
+#endif
+#endif /* CONFIG_MACH_OPPO */
+		
 		switch (mmc_blk_cmd_recovery(card, req, brq, &ecc_err)) {
 		case ERR_RETRY:
 			return MMC_BLK_RETRY;
@@ -1559,6 +1592,17 @@ static int mmc_blk_err_check(struct mmc_card *card,
 		       (unsigned)blk_rq_pos(req),
 		       (unsigned)blk_rq_sectors(req),
 		       brq->cmd.resp[0], brq->stop.resp[0]);
+
+#ifdef CONFIG_MACH_OPPO
+#if 0 //sjc20141106 delete
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/28, Add for solve QT bug(ID:390597): Bad micro SD card cause the phone to suspend/wakeup abnormal
+		if ((card->host->index == 1) 
+			&& (rq_data_dir(req) == READ)) {
+			bad_micro_sd_card = 1;
+			printk(KERN_ERR"%s: bad sd card had been detected.\n", __func__);
+		}
+#endif
+#endif /* CONFIG_MACH_OPPO */
 
 		if (rq_data_dir(req) == READ) {
 			if (ecc_err)
@@ -2667,6 +2711,20 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			mmc_stop_bkops(card);
 	}
 
+#ifdef CONFIG_MACH_OPPO
+#if 0 //sjc20141106 delete
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/28, Add for solve QT bug(ID:390597): Bad micro SD card cause the phone to suspend/wakeup abnormal
+	if ((card->host->index == 1) && bad_micro_sd_card) {
+		if (req) {
+			blk_end_request_all(req, -EIO);
+			printk(KERN_ERR"%s: bad sd card had been detected. do nothing.\n", __func__);
+			ret = -EIO;
+			goto out;
+		}
+	}
+#endif
+#endif /* CONFIG_MACH_OPPO */
+
 	ret = mmc_blk_part_switch(card, md);
 	if (ret) {
 		if (req) {
@@ -3126,16 +3184,137 @@ static const struct mmc_fixup blk_fixups[] =
 	END_FIXUP
 };
 
+#ifdef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/08/06, Add for mainboard device information
+struct manufacture_info mainboard_info;
+
+static void mainboard_verify(void)
+{
+	switch(get_pcb_version()) {
+		case HW_VERSION__10:		
+			mainboard_info.version ="10";
+			mainboard_info.manufacture = "SA";
+			break;
+		case HW_VERSION__11:
+			mainboard_info.version = "11";
+			mainboard_info.manufacture = "SB";
+			break;
+		case HW_VERSION__12:
+			mainboard_info.version = "12";
+			mainboard_info.manufacture = "SC";
+			break;
+		case HW_VERSION__13:
+			mainboard_info.version = "13";
+			mainboard_info.manufacture = "SD";
+			break;
+		case HW_VERSION__20:		
+			mainboard_info.version ="20";
+			mainboard_info.manufacture = "SA";
+			break;
+		case HW_VERSION__21:
+			mainboard_info.version = "21";
+			mainboard_info.manufacture = "SB";
+			break;
+		case HW_VERSION__22:
+			mainboard_info.version = "22";
+			mainboard_info.manufacture = "SC";
+			break;
+		case HW_VERSION__23:
+			mainboard_info.version = "23";
+			mainboard_info.manufacture = "SD";
+			break;
+
+		case HW_VERSION__30:		
+			mainboard_info.version ="30";
+			mainboard_info.manufacture = "SA";
+			break;
+		case HW_VERSION__31:
+			mainboard_info.version = "31";
+			mainboard_info.manufacture = "SB";
+			break;
+		case HW_VERSION__32:
+			mainboard_info.version = "32";
+			mainboard_info.manufacture = "SC";
+			break;
+		case HW_VERSION__33:
+			mainboard_info.version = "33";
+			mainboard_info.manufacture = "SD";
+			break;
+		case HW_VERSION__40:		
+			mainboard_info.version ="40";
+			mainboard_info.manufacture = "SA";
+			break;
+		case HW_VERSION__41:
+			mainboard_info.version = "41";
+			mainboard_info.manufacture = "SB";
+			break;
+		case HW_VERSION__42:
+			mainboard_info.version = "42";
+			mainboard_info.manufacture = "SC";
+			break;
+		case HW_VERSION__43:
+			mainboard_info.version = "43";
+			mainboard_info.manufacture = "SD";
+			break;			
+		default:
+			mainboard_info.version = "UNKOWN";
+			mainboard_info.manufacture = "UNKOWN";
+		}	
+}
+#endif /* CONFIG_MACH_OPPO */
+
 static int mmc_blk_probe(struct mmc_card *card)
 {
 	struct mmc_blk_data *md, *part_md;
 	char cap_str[10];
+#ifdef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2013/10/24, Add for eMMC and DDR device information	
+	char * manufacturerid;
+	struct manufacture_info ddr_info_1 = {
+		.version = "EDFA164A2PB",
+		.manufacture = "ELPIDA",
+	};
+	struct manufacture_info ddr_info_2 = {
+		.version = "K3QF7F70DM",
+		.manufacture = "SAMSUNG",
+	};	
+#endif /* CONFIG_MACH_OPPO */
 
 	/*
 	 * Check that the card supports the command class(es) we need.
 	 */
 	if (!(card->csd.cmdclass & CCC_BLOCK_READ))
 		return -ENODEV;
+
+#ifdef CONFIG_MACH_OPPO 
+	mmc_mid = card->cid.manfid;//added by songxh 
+//Zhilong.Zhang@OnlineRd.Driver, 2013/10/24, Add for eMMC and DDR device information
+	switch (card->cid.manfid) {
+		case  0x11:
+			manufacturerid = "TOSHIBA";
+			break;
+		case  0x15:
+			manufacturerid = "SAMSUNG";
+			break;
+		case  0x45:
+			manufacturerid = "SANDISK";
+			break;
+		default:
+			manufacturerid = "unknown";
+			break;
+	}
+	if (!strcmp(mmc_card_id(card), "mmc0:0001")) {
+		register_device_proc("emmc", mmc_card_name(card), manufacturerid);
+		if (get_pcb_version() < HW_VERSION__20)
+			register_device_proc("ddr", ddr_info_1.version, ddr_info_1.manufacture);
+		else
+			register_device_proc("ddr", ddr_info_2.version, ddr_info_2.manufacture);
+
+		//Zhilong.Zhang@OnlineRd.Driver, 2014/08/06, Add for mainboard device information
+		mainboard_verify();
+		register_device_proc("mainboard", mainboard_info.version, mainboard_info.manufacture);		
+	}
+#endif /* CONFIG_MACH_OPPO */
 
 	md = mmc_blk_alloc(card);
 	if (IS_ERR(md))

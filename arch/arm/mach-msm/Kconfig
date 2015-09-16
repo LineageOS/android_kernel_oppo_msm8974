@@ -251,6 +251,24 @@ config ARCH_APQ8064
 	select MSM_USE_USER_ACCESSIBLE_TIMERS
 	select MSM_CPU_PWRCTL
 
+config OPPO_MSM_FIND7
+	bool "OPPO_MSM_FIND7"
+
+config OPPO_MSM_14001
+	bool "OPPO_MSM_14001"
+
+config OPPO_MSM_14021
+	bool "OPPO_MSM_14021"
+
+config OPPO_DAILY_BUILD
+	bool "OPPO_DAILY_BUILD"
+
+config OPPO_DEVICE_IFNO
+	bool "config oppo device info"
+	default y
+	help 
+	  This is the oppo device info show function, open it will enable the function.
+
 config ARCH_MSM8974
 	bool "MSM8974"
 	select ARCH_MSM_KRAITMP
