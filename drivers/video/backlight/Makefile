@@ -42,3 +42,7 @@ obj-$(CONFIG_BACKLIGHT_88PM860X) += 88pm860x_bl.o
 obj-$(CONFIG_BACKLIGHT_PCF50633)	+= pcf50633-backlight.o
 obj-$(CONFIG_BACKLIGHT_AAT2870) += aat2870_bl.o
 obj-$(CONFIG_BACKLIGHT_OT200) += ot200_bl.o
+#ifdef CONFIG_MACH_OPPO 
+#liuminglei@oneplus.bsp, 2014/12/26, Add for  sync with android 4.4
+obj-$(CONFIG_LM3630_BL) += lm3630_bl.o
+#endif /* CONFIG_MACH_OPPO */

@@ -104,7 +104,11 @@ static int try_to_freeze_tasks(bool user_only)
 		if(wakeup) {
 			printk("\n");
 			printk(KERN_ERR "Freezing of %s aborted\n",
-					user_only ? "user space " : "tasks ");
+					user_only ? "user space " : "tasks ");						
+#ifdef CONFIG_MACH_OPPO 
+//Shu.Liu@OnlineRd.Driver, 2014/02/24, modified for sleep debug
+			print_active_wakeup_sources();
+#endif /* CONFIG_MACH_OPPO */
 		}
 		else {
 			printk("\n");

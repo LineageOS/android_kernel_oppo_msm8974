@@ -379,6 +379,11 @@ obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30-regulator.o
 obj-$(CONFIG_ARCH_MSM7X27A) += board-msm7x27a-regulator.o
 endif
 
+#ifdef CONFIG_MACH_OPPO 
+#Wanjc@OnlineRd.Driver, 2013/10/23, Add for OPPO device info
+obj-$(CONFIG_OPPO_DEVICE_IFNO)	+=  device_info.o
+#endif /* CONFIG_MACH_OPPO */
+
 obj-$(CONFIG_ARCH_MSM8960) += mdm2.o mdm_common.o
 obj-$(CONFIG_MSM_RTB) += msm_rtb.o
 obj-$(CONFIG_MSM_CACHE_ERP) += cache_erp.o
