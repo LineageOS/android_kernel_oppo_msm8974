@@ -151,7 +151,7 @@ static const struct unwind_idx *search_index(unsigned long addr,
 	if (likely(start->addr_offset <= addr_prel31))
 		return start;
 	else {
-		pr_warning("unwind: Unknown symbol address %08lx\n", addr);
+		//pr_warning("unwind: Unknown symbol address %08lx\n", addr);//Removed by zhangzhilong 2014-11-20 for Qualcomm patch, case id:01807014
 		return NULL;
 	}
 }
@@ -345,7 +345,7 @@ int unwind_frame(struct stackframe *frame)
 
 	idx = unwind_find_idx(frame->pc);
 	if (!idx) {
-		pr_warning("unwind: Index not found %08lx\n", frame->pc);
+		//pr_warning("unwind: Index not found %08lx\n", frame->pc);//Removed by zhangzhilong 2014-11-20 for Qualcomm patch, case id:01807014
 		return -URC_FAILURE;
 	}
 
