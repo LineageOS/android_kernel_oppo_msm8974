@@ -3043,4 +3043,26 @@ config KRAIT_REGULATOR
 	 line from the PMIC. This supply line is powered by multiple
 	 regulators running in ganged mode inside the PMIC. Enable
 	 this option to support such configurations.
+
+config MACH_OPPO
+	bool
+	depends on ARCH_MSM
+
+menu "OPPO board selection"
+
+config MACH_FIND7
+	depends on ARCH_MSM8974
+	select MACH_OPPO
+	bool "OPPO Find7"
+	help
+	  Support for the OPPO Find7A/Find7S
+
+config MACH_N3
+	depends on ARCH_MSM8974
+	select MACH_OPPO
+	bool "OPPO N3"
+	help
+	  Support for the OPPO N3
+
+endmenu
 endif
