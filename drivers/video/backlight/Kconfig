@@ -354,6 +354,17 @@ config BACKLIGHT_OT200
 	  To compile this driver as a module, choose M here: the module will be
 	  called ot200_bl.
 
+#ifdef CONFIG_MACH_OPPO 
+#liuminglei@oneplus.bsp, 2014/12/26, Add for  sync with android 4.4
+config LM3630_BL
+	bool "lcd backlight lm3630 driver"
+	#depends on I2C
+	default y
+	---help---
+	  Support for panel backlight	  
+#endif /* CONFIG_MACH_OPPO */
+
+
 config BACKLIGHT_PANDORA
 	tristate "Backlight driver for Pandora console"
 	depends on TWL4030_CORE

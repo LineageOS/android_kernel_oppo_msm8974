@@ -145,6 +145,8 @@ enum {
 	MMC_PACKED_N_SINGLE,
 };
 
+unsigned int		mmc_mid;//added by songxh
+
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
 
@@ -3136,6 +3138,10 @@ static int mmc_blk_probe(struct mmc_card *card)
 	 */
 	if (!(card->csd.cmdclass & CCC_BLOCK_READ))
 		return -ENODEV;
+
+#ifdef CONFIG_MACH_OPPO 
+       mmc_mid = card->cid.manfid;//added by songxh
+#endif /* CONFIG_MACH_OPPO */
 
 	md = mmc_blk_alloc(card);
 	if (IS_ERR(md))
