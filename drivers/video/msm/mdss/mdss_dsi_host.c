@@ -22,7 +22,11 @@
 #include <linux/kthread.h>
 
 #include <mach/iommu_domains.h>
-
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/10/17  Add for get panel power information */
+#include <linux/regulator/driver.h>
+#include "mdss_io_util.h"
+#endif /*CONFIG_MACH_OPPO*/
 #include "mdss.h"
 #include "mdss_dsi.h"
 #include "mdss_panel.h"
@@ -30,8 +34,24 @@
 
 #define VSYNC_PERIOD 17
 
+
 struct mdss_dsi_ctrl_pdata *ctrl_list[DSI_CTRL_MAX];
 
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/10/17  Add for get panel power information */
+struct regulator {
+	struct device *dev;
+	struct list_head list;
+	int uA_load;
+	int min_uV;
+	int max_uV;
+	int enabled;
+	char *supply_name;
+	struct device_attribute dev_attr;
+	struct regulator_dev *rdev;
+	struct dentry *debugfs;
+};
+#endif /*CONFIG_MACH_OPPO*/
 struct mdss_hw mdss_dsi0_hw = {
 	.hw_ndx = MDSS_HW_DSI0,
 	.ptr = NULL,
@@ -1382,6 +1402,10 @@ void mdss_dsi_debug_check_te(struct mdss_panel_data *pdata)
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	u8 rc, te_count = 0;
 	u8 te_max = 250;
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/10/17  Add for get panel power information */
+	int i;
+#endif /*CONFIG_MACH_OPPO*/
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -1408,6 +1432,17 @@ void mdss_dsi_debug_check_te(struct mdss_panel_data *pdata)
 		 */
 		udelay(80);
 	}
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/10/17  Add for get panel powerinformation */
+	if(te_count>=250){
+	    for(i = ctrl_pdata->power_data.num_vreg-1; i >= 0; i--){
+               pr_info("mdss regulator %s %d\n",ctrl_pdata->power_data.vreg_config[i].vreg_name,
+			   	                                     ctrl_pdata->power_data.vreg_config[i].vreg->rdev->use_count);
+	    }
+	   pr_info("mdss panle gpio58 %d\n",gpio_get_value(58));
+	   pr_info("mdss panle gpio76 %d\n",gpio_get_value(76));
+	}
+#endif /*CONFIG_MACH_OPPO*/
 	pr_info(" ============ finish waiting for TE ============\n");
 }
 

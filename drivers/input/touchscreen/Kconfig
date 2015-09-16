@@ -1030,6 +1030,12 @@ config TOUCHSCREEN_GT9XX
 
           If unsure, say N.
 
+config TOUCHSCREEN_SYNAPTICS_S3508_I2C_RMI
+	tristate "Synaptics s3508 i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics s3508 RMI over I2C based touchscreens.
+
 source "drivers/input/touchscreen/gt9xx/Kconfig"
 
 endif
