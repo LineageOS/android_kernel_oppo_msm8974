@@ -1,0 +1,31 @@
+config MACH_OPPO
+	bool
+	depends on ARCH_MSM
+
+menu "OPPO board selection"
+
+config MACH_FIND7
+	depends on ARCH_MSM8974
+	select MACH_OPPO
+	bool "OPPO Find7"
+	help
+	  Support for the OPPO Find7A/Find7S
+
+config MACH_N3
+	depends on ARCH_MSM8974
+	select MACH_OPPO
+	bool "OPPO N3"
+	help
+	  Support for the OPPO N3
+
+endmenu
+
+menu "Oppo specific options"
+
+config OPPO_DEVICE_INFO
+	bool "Oppo device info driver"
+	default y if MACH_OPPO
+	help
+	  Say Y to enable Oppo device info driver
+
+endmenu

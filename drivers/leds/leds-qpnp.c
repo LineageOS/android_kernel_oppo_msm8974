@@ -27,6 +27,14 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 
+/*Added by Jinshui.Liu@Camera 20140827 start for individual flashlight*/
+#ifdef CONFIG_MACH_OPPO
+#include <asm/uaccess.h>
+#include <linux/pcb_version.h>
+#include <linux/proc_fs.h>
+#endif
+/*Added by Jinshui.Liu@Camera 20140901 end*/
+
 #define WLED_MOD_EN_REG(base, n)	(base + 0x60 + n*0x10)
 #define WLED_IDAC_DLY_REG(base, n)	(WLED_MOD_EN_REG(base, n) + 0x01)
 #define WLED_FULL_SCALE_REG(base, n)	(WLED_IDAC_DLY_REG(base, n) + 0x01)
@@ -499,6 +507,33 @@ static struct pwm_device *kpdbl_master;
 static u32 kpdbl_master_period_us;
 DECLARE_BITMAP(kpdbl_leds_in_use, NUM_KPDBL_LEDS);
 static bool is_kpdbl_master_turn_on;
+#ifdef CONFIG_MACH_OPPO
+/*Added by Jinshui.Liu@Camera 20140930 start for button-light*/
+struct qpnp_kpdbl_key_value_pair {
+	char key[20];
+	int value;
+};
+#endif
+
+static int num_kpbl_leds_on;
+/*Added by Jinshui.Liu@Camera 20140624 start for flash led test*/
+#ifdef CONFIG_MACH_OPPO
+bool flash_blink_state;
+int led_flash_state;
+/*Added by Jinshui.Liu@Camera 20140930 start for button-light*/
+#define NUM_OF_KPDBL 8
+struct qpnp_kpdbl_key_value_pair key_value[NUM_OF_KPDBL] = {
+	{"null", 0},
+	{"null", 0},
+	{"null", 0},
+	{"null", 0},
+	{"null", 0},
+	{"null", 0},
+	{"null", 0},
+	{"null", 0}
+};
+#endif
+/*Added by Jinshui.Liu@Camera 20140624 end*/
 
 static int
 qpnp_led_masked_write(struct qpnp_led_data *led, u16 addr, u8 mask, u8 val)
@@ -1280,6 +1315,11 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 {
 	int rc;
 	int duty_us, duty_ns, period_us;
+#ifdef CONFIG_MACH_OPPO
+/*Added by Jinshui.Liu@Camera 20140930 start for button-light*/
+	int i = 0;
+	bool found = 0;
+#endif
 
 	if (led->cdev.brightness) {
 		if (!led->kpdbl_cfg->pwm_cfg->blinking)
@@ -1360,6 +1400,32 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 		if (led->kpdbl_cfg->always_on)
 			is_kpdbl_master_turn_on = true;
 
+#ifndef CONFIG_MACH_OPPO
+/*modified by Jinshui.Liu@Camera 20140930 start for button-light*/
+		num_kpbl_leds_on++;
+#else
+		found = 0;
+		for (i = 0; i < NUM_OF_KPDBL; i++) {
+			if (!strcmp(key_value[i].key, led->cdev.name)) {
+				found = 1;
+				if (key_value[i].value == 0) {
+					key_value[i].value = 1;
+					num_kpbl_leds_on++;
+				}
+				break;
+			} 
+		}
+		if (!found) {
+			for (i = 0; i < NUM_OF_KPDBL; i++) {
+				if (!strcmp(key_value[i].key, "null")) {
+					strcpy(key_value[i].key, led->cdev.name);
+					key_value[i].value = 1;
+					num_kpbl_leds_on++;
+					break;
+				}
+			}
+		}
+#endif
 	} else {
 		led->kpdbl_cfg->pwm_cfg->mode =
 			led->kpdbl_cfg->pwm_cfg->default_mode;
@@ -1425,10 +1491,46 @@ static int qpnp_kpdbl_set(struct qpnp_led_data *led)
 				is_kpdbl_master_turn_on = false;
 			}
 		}
+#ifndef CONFIG_MACH_OPPO
+/*modified by Jinshui.Liu@Camera 20140930 start for button-light*/
+		if (num_kpbl_leds_on > 0)
+			num_kpbl_leds_on--;
+#else
+		found = 0;
+		for (i = 0; i < NUM_OF_KPDBL; i++) {
+			if (!strcmp(key_value[i].key, led->cdev.name)) {
+				found = 1;
+				if (key_value[i].value == 1) {
+					if (num_kpbl_leds_on > 0)
+						num_kpbl_leds_on--;
+					key_value[i].value = 0;
+				}
+				break;
+			} 
+		}
+		if (!found) {
+			for (i = 0; i < NUM_OF_KPDBL; i++) {
+				if (!strcmp(key_value[i].key, "null")) {
+					strcpy(key_value[i].key, led->cdev.name);
+					key_value[i].value = 0;
+					break;
+				}
+			}
+		}
+#endif
+
 	}
 
 	led->kpdbl_cfg->pwm_cfg->blinking = false;
 
+#ifdef CONFIG_MACH_OPPO
+/*Added by Jinshui.Liu@Camera 20140930 start for button-light*/
+	pr_debug("%s: kpdbl_name %s, num_kpbl_leds_on %d",
+		__func__, led->cdev.name, num_kpbl_leds_on);
+	for (i = 0; i< NUM_OF_KPDBL; i++)
+		pr_debug("%s idx %d, key %s, value %d",
+			__func__, i, key_value[i].key, key_value[i].value);
+#endif
 	qpnp_dump_regs(led, kpdbl_debug_regs, ARRAY_SIZE(kpdbl_debug_regs));
 
 	return 0;
@@ -2397,6 +2499,162 @@ static ssize_t blink_store(struct device *dev,
 	return count;
 }
 
+/*Added by Jinshui.Liu@Camera 20140624 start for flash led test*/
+#ifdef CONFIG_MACH_OPPO
+static void led_flash_blink_work(struct work_struct *work)
+{
+    //int brightness;
+    struct delayed_work *dwork = to_delayed_work(work);
+	struct qpnp_led_data *led = container_of(dwork,
+					struct qpnp_led_data, dwork);
+
+    if (flash_blink_state) {
+        if (led->flash_cfg->torch_enable)
+            led->cdev.brightness = 51;
+        else
+            led->cdev.brightness = 500;
+    } else {
+        led->cdev.brightness = 0;
+    }
+
+	__qpnp_led_work(led, 0);
+	
+    flash_blink_state = !flash_blink_state;
+	
+	/*not schedule the work if the led_flash_state is not blink, it will crash otherwise*/
+	if (led_flash_state == 2) {
+		schedule_delayed_work(dwork, msecs_to_jiffies(1000));
+	}
+	return;
+}
+
+static void led_flash_blink_stop(struct qpnp_led_data *led)
+{
+    
+    if (led_flash_state == 2) {
+        flash_blink_state = false;
+        cancel_delayed_work_sync(&led->dwork);
+        led->cdev.brightness = 0;
+        __qpnp_led_work(led, 0);
+    } else if(led_flash_state == 1 || led_flash_state == 3) {
+        led->cdev.brightness = 0;
+        __qpnp_led_work(led, 0);
+    } else {
+        return;
+    }
+    
+    led_flash_state = 0;
+}
+
+static ssize_t led_flash_blink_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	ssize_t ret = -EINVAL;
+	struct qpnp_led_data *led;
+	unsigned long state;
+	struct led_classdev *led_cdev = dev_get_drvdata(dev);
+	led = container_of(led_cdev, struct qpnp_led_data, cdev);
+
+	ret = kstrtoul(buf, 10, &state);
+	if (ret)
+		return ret;
+
+    /*stop it first*/
+    led_flash_blink_stop(led);
+
+    if (state == 2) {
+        /*blink*/
+        flash_blink_state = true;
+        INIT_DELAYED_WORK(&led->dwork, led_flash_blink_work);
+    	schedule_delayed_work(&led->dwork, msecs_to_jiffies(500));
+	} else if(state == 1 || state == 3) {
+	    /*lamp*/
+        if (led->flash_cfg->torch_enable)
+            led->cdev.brightness = 53;
+        else
+            led->cdev.brightness = 560;
+        __qpnp_led_work(led, 0);
+	}
+
+    pr_err("%s: set led_flash_state to %ld\n", __func__, state);
+    led_flash_state = state;
+
+	return count;
+}
+
+static ssize_t led_flash_blink_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	ssize_t size = -EINVAL;
+
+	if (led_flash_state >= 0)
+		size = snprintf(buf, PAGE_SIZE, "%d\n", led_flash_state);
+	return size;
+}
+
+/*Added by Jinshui.Liu@Camera 20140827 start for individual flashlight*/
+static int flash_proc_read(char *page, char **start, off_t off, int count,
+    int *eof, void *data)
+{
+    ssize_t size = -EINVAL;
+#ifdef CONFIG_MACH_OPPO
+/*oppo hufeng 20150314 add to avoid null pointer*/
+    if (!page)
+    {
+        pr_err("page is NULL pointer!!!\n");
+	 return -EINVAL;
+    }
+#endif
+    if (led_flash_state >= 0)
+        size = snprintf(page, PAGE_SIZE, "%d\n", led_flash_state);
+    return size;
+}
+
+static int flash_proc_write(struct file *filp, const char __user *buff,
+    unsigned long len, void *data)
+{
+    char temp[1] = {0};
+    int state = 0;
+    struct qpnp_led_data *led = (struct qpnp_led_data *)data;
+#ifdef CONFIG_MACH_OPPO
+/*oppo hufeng 20150314 add to avoid null pointer*/
+    if (!buff)
+    {
+        pr_err("buff is NULL pointer!!!\n");
+	 return -EINVAL;
+    }
+#endif
+    if (copy_from_user(temp, buff, 1)) 
+        return -EFAULT; 
+    sscanf(temp, "%d", &state);
+
+    /*stop it first*/
+    led_flash_blink_stop(led);
+
+    if (state == 2) {
+        /*blink*/
+        flash_blink_state = true;
+        INIT_DELAYED_WORK(&led->dwork, led_flash_blink_work);
+    	schedule_delayed_work(&led->dwork, msecs_to_jiffies(500));
+	} else if(state == 1 || state == 3) {
+	    /*lamp*/
+        if (led->flash_cfg->torch_enable)
+            led->cdev.brightness = 53;
+        else
+            led->cdev.brightness = 560;
+        __qpnp_led_work(led, 0);
+	}
+
+    pr_err("%s: set led_flash_state to %d\n", __func__, state);
+    led_flash_state = state;
+
+	return len;
+}
+
+static DEVICE_ATTR(flash_blink, 0664, led_flash_blink_show, led_flash_blink_store);
+#endif
+/*Added by Jinshui.Liu@Camera 20140624 end*/
 static DEVICE_ATTR(led_mode, 0664, NULL, led_mode_store);
 static DEVICE_ATTR(strobe, 0664, NULL, led_strobe_type_store);
 static DEVICE_ATTR(pwm_us, 0664, NULL, pwm_us_store);
@@ -2409,6 +2667,11 @@ static DEVICE_ATTR(duty_pcts, 0664, NULL, duty_pcts_store);
 static DEVICE_ATTR(blink, 0664, NULL, blink_store);
 
 static struct attribute *led_attrs[] = {
+    /*Added by Jinshui.Liu@Camera 20140624 start for flash led test*/
+#ifdef CONFIG_MACH_OPPO
+	&dev_attr_flash_blink.attr,
+#endif
+/*Added by Jinshui.Liu@Camera 20140624 end*/
 	&dev_attr_led_mode.attr,
 	&dev_attr_strobe.attr,
 	NULL
@@ -3409,6 +3672,11 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 	int rc, i, num_leds = 0, parsed_leds = 0;
 	const char *led_label;
 	bool regulator_probe = false;
+/*Added by Jinshui.Liu@Camera 20140827 start for individual flashlight*/
+#ifdef CONFIG_MACH_OPPO
+	struct proc_dir_entry *proc_entry = NULL;
+#endif
+/*Added by Jinshui.Liu@Camera 20140901 end*/
 
 	node = spmi->dev.of_node;
 	if (node == NULL)
@@ -3572,7 +3840,23 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 							&led_attr_group);
 			if (rc)
 				goto fail_id_check;
-
+/*Added by Jinshui.Liu@Camera 20140827 start for individual flashlight*/
+/*oppo hufeng 20150203 modify to distinguish oneplus and find7x*/
+#ifdef CONFIG_MACH_OPPO
+		if (get_pcb_version() >= HW_VERSION__20) {
+			if (led->flash_cfg->torch_enable) {
+				proc_entry = create_proc_entry( "qcom_flash", 0664, NULL);
+				if (!proc_entry) {
+					pr_err("proc_entry create failed\n");
+					return rc;
+				}
+				proc_entry->data = led;
+				proc_entry->read_proc = flash_proc_read;
+				proc_entry->write_proc = flash_proc_write;
+			}
+		}
+#endif
+/*Added by Jinshui.Liu@Camera 20140901 end*/
 		}
 
 		if (led->id == QPNP_ID_LED_MPP) {

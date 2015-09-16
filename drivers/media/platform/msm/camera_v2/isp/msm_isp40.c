@@ -22,6 +22,7 @@
 #include "msm.h"
 #include "msm_camera_io_util.h"
 
+extern int print_num;
 /*#define CONFIG_MSM_ISP_DBG*/
 #undef CDBG
 #ifdef CONFIG_MSM_ISP_DBG
@@ -378,7 +379,10 @@ static void msm_vfe40_process_camif_irq(struct vfe_device *vfe_dev,
 
 	if (!(irq_status0 & 0xF))
 		return;
-
+	if(print_num > 0){
+		print_num -- ;
+		pr_err("%s:SOF IRQ:%d,0x%x\n",__func__,print_num,irq_status0);
+	}
 	if (irq_status0 & (1 << 0)) {
 		ISP_DBG("%s: SOF IRQ\n", __func__);
 		cnt = vfe_dev->axi_data.src_info[VFE_PIX_0].raw_stream_count;
