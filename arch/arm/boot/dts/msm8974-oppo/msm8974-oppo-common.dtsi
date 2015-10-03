@@ -99,6 +99,10 @@
 		qcom,model = "msm8974-taiko-mtp-snd-card";
 		qcom,cdc-micbias2-headset-only;
 	};
+
+	qcom,bam_dmux@fc834000 {
+		qcom,fast-shutdown;
+	};
 };
 
 &sdhc_1 {
