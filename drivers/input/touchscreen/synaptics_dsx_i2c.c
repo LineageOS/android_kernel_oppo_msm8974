@@ -370,6 +370,10 @@ static ssize_t synaptics_rmi4_abs_raw_data_show(struct device *dev,
         struct device_attribute *attr, char *buf);
 static ssize_t synaptics_rmi4_handle_interrupt(struct device *dev,
         struct device_attribute *attr, const char *buf, size_t count);
+static ssize_t synaptics_rmi4_gesture_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count);
+static ssize_t synaptics_rmi4_gesture_show(struct device *dev,
+        struct device_attribute *attr, char *buf);
 static ssize_t synaptics_rmi4_baseline_show(struct device *dev,
         struct device_attribute *attr, char *buf);
 static ssize_t synaptics_rmi4_baseline_store(struct device *dev,
@@ -414,6 +418,9 @@ static struct device_attribute attrs[] = {
     __ATTR(suspend, S_IWUSR,
             synaptics_rmi4_show_error,
             synaptics_rmi4_suspend_store),
+    __ATTR(gesture, (S_IRUGO | S_IWUSR),
+            synaptics_rmi4_gesture_show,
+            synaptics_rmi4_gesture_store),
     __ATTR(delta_data, S_IRUGO,
             synaptics_rmi4_delta_data_show,
             synaptics_rmi4_store_error),			
@@ -1024,7 +1031,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #define KEY_F8			66  // >, next music 
 #define KEY_F9			67  // M or W
 
-#define UnkownGestrue       0
+#define UnknownGesture      0
 #define DouTap              1   // double tap
 #define UpVee               2   // V
 #define DownVee             3   // ^
@@ -1259,37 +1266,27 @@ static int get_virtual_key_button(int x, int y)
 
 static void synaptics_enable_gesture(struct synaptics_rmi4_data *rmi4_data, bool enable) 
 {
+    int retval;
+    unsigned char val[4];
     unsigned char reportbuf[3];
     unsigned short reportaddr = SYNA_ADDR_REPORT_FLAG;
-	//huqiao add for find7 to solve the screenoff gesture problme start
-	uint8_t reg;
-	uint8_t tmp_new = 0;
-	reg =0x6b;
-	//huqiao add for find7 to solve the screenoff gesture problme end
-    print_ts(TS_INFO, "gesture mode enable = %x, enable = %d\n", rmi4_data->gesture_enable, enable);
 
-    if(rmi4_data->gesture_enable == 0)
-    {
-        return ;
-    }
-    
-    synaptics_rmi4_i2c_read(rmi4_data, reportaddr, reportbuf, sizeof(reportbuf));
+    print_ts(TS_INFO, "gesture mode enable = %x, enable = %d\n", atomic_read(&rmi4_data->syna_use_gesture), enable);
 
-    if(enable)
+    retval = synaptics_rmi4_i2c_read(syna_rmi4_data,SYNA_ADDR_GESTURE_FLAG,val,sizeof(val));
+
+    if(enable) {
+        val[0] = 0x6b;
         reportbuf[2] |= 0x02 ;
-    else 
-    {
+    } else {
+        val[0] = 0x00;
         reportbuf[2] &= 0xfd ;
     }
 
-    synaptics_rmi4_i2c_write(rmi4_data, reportaddr, reportbuf, sizeof(reportbuf));
-	//huqiao add for find7 to solve the screenoff gesture problme start
-	synaptics_rmi4_i2c_read(rmi4_data, SYNA_ADDR_GESTURE_FLAG, &tmp_new,1);
-	if(tmp_new !=0x6b)
-	synaptics_rmi4_i2c_write(rmi4_data, SYNA_ADDR_GESTURE_FLAG, &reg,1);
-	//huqiao add for find7 to solve the screenoff gesture problme end
-    rmi4_data->gesture = enable ;
-    
+    retval = synaptics_rmi4_i2c_write(syna_rmi4_data,SYNA_ADDR_GESTURE_FLAG,val,sizeof(val));
+
+    retval = synaptics_rmi4_i2c_write(rmi4_data,reportaddr,reportbuf,sizeof(reportbuf));
+
     return;
 }
 
@@ -1306,6 +1303,32 @@ static int synaptics_enable_irqwake(struct synaptics_rmi4_data *rmi4_data, bool 
     return 0 ;
 }
 
+static ssize_t synaptics_rmi4_gesture_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    return snprintf(buf, PAGE_SIZE, "%u\n", atomic_read(&syna_rmi4_data->syna_use_gesture));
+}
+
+static ssize_t synaptics_rmi4_gesture_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count)
+{
+    unsigned int input;
+
+    if (sscanf(buf, "%u", &input) != 1)
+        return -EINVAL;
+
+    if (input == 21 || input == 1) {
+        atomic_set(&syna_rmi4_data->syna_use_gesture, 1);
+        synaptics_enable_gesture(syna_rmi4_data, true);
+    } else if (input == 20 || input == 0) {
+        atomic_set(&syna_rmi4_data->syna_use_gesture, 0);
+        synaptics_enable_gesture(syna_rmi4_data, false);
+    } else
+        return -EINVAL;
+
+    return count;
+}
+
 //support tp2.0 interface, app read it to get points
 static int synaptics_rmi4_crood_read(char *page, char **start, off_t off, int count, int *eof, void *data) 
 {
@@ -1318,38 +1341,92 @@ static int synaptics_rmi4_crood_read(char *page, char **start, off_t off, int co
             syna_rmi4_data->points[8], syna_rmi4_data->points[9], syna_rmi4_data->points[10], syna_rmi4_data->points[11],
             syna_rmi4_data->points[12]);	
 
-    len = sprintf(page, "%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d\n", syna_rmi4_data->gesturemode,                   
+   len = sprintf(page, "%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d\n", syna_rmi4_data->gesturemode,                   
             syna_rmi4_data->points[0], syna_rmi4_data->points[1], syna_rmi4_data->points[2], syna_rmi4_data->points[3],                   
             syna_rmi4_data->points[4], syna_rmi4_data->points[5], syna_rmi4_data->points[6], syna_rmi4_data->points[7],                   
             syna_rmi4_data->points[8], syna_rmi4_data->points[9], syna_rmi4_data->points[10], syna_rmi4_data->points[11],
             syna_rmi4_data->points[12]);	
 
-    return len ;
+   return len ;
 }
 
-static int synaptics_rmi4_gesture_proc_read(char *page, char **start, off_t off, int count, int *eof, void *data) 
+static int synaptics_rmi4_proc_double_tap_read(char *page, char **start, off_t off,
+        int count, int *eof, void *data)
 {
-    int len = 0 ;
-    unsigned int enable ;
-
-    enable = (syna_rmi4_data->gesture_enable)?1:0;
-
-    len = sprintf(page, "%d\n", enable);
-
-    return len ;
+    return sprintf(page, "%d\n", atomic_read(&syna_rmi4_data->double_tap_enable));
 }
 
-static int synaptics_rmi4_gesture_proc_write( struct file *filp, const char __user *buff, unsigned long len, void *data ) 
+static int synaptics_rmi4_proc_double_tap_write(struct file *filp, const char __user *buff,
+        unsigned long len, void *data)
 {
-    unsigned int enable ;
-    if(len > 2)
-        return 0 ;
+    int enable;
+    char buf[2];
 
-    enable = (buff[0]==0x30)?0:1 ;
-    
-    syna_rmi4_data->gesture_enable = enable;
-    
-    print_ts(TS_INFO, "%s, gesture_enable = 0x%x\n", __func__, syna_rmi4_data->gesture_enable);
+    if (len > 2)
+        return 0;
+
+    if (copy_from_user(buf, buff, len)) {
+        print_ts(TS_DEBUG, KERN_ERR "Read proc input error.\n");
+        return -EFAULT;
+    }
+
+    enable = (buf[0] == '0') ? 0 : 1;
+
+    atomic_set(&syna_rmi4_data->double_tap_enable, enable);
+
+    return len;
+}
+
+static int synaptics_rmi4_proc_camera_read(char *page, char **start, off_t off,
+        int count, int *eof, void *data)
+{
+    return sprintf(page, "%d\n", atomic_read(&syna_rmi4_data->camera_enable));
+}
+
+static int synaptics_rmi4_proc_camera_write(struct file *filp, const char __user *buff,
+        unsigned long len, void *data)
+{
+    int enable;
+    char buf[2];
+
+    if (len > 2)
+        return 0;
+
+    if (copy_from_user(buf, buff, len)) {
+        print_ts(TS_DEBUG, KERN_ERR "Read proc input error.\n");
+        return -EFAULT;
+    }
+
+    enable = (buf[0] == '0') ? 0 : 1;
+
+    atomic_set(&syna_rmi4_data->camera_enable, enable);
+
+    return len;
+}
+
+static int synaptics_rmi4_proc_music_read(char *page, char **start, off_t off,
+        int count, int *eof, void *data)
+{
+    return sprintf(page, "%d\n", atomic_read(&syna_rmi4_data->music_enable));
+}
+
+static int synaptics_rmi4_proc_music_write(struct file *filp, const char __user *buff,
+        unsigned long len, void *data)
+{
+    int enable;
+    char buf[2];
+
+    if (len > 2)
+        return 0;
+
+    if (copy_from_user(buf, buff, len)) {
+        print_ts(TS_DEBUG, KERN_ERR "Read proc input error.\n");
+        return -EFAULT;
+    }
+
+    enable = (buf[0] == '0') ? 0 : 1;
+
+    atomic_set(&syna_rmi4_data->music_enable, enable);
 
     return len;
 }
@@ -1379,6 +1456,71 @@ static int synaptics_rmi4_reg_proc_write( struct file *filp, const char __user *
     return len;
 }
 //huqiao add node for reading gesture register end
+
+static int synaptics_rmi4_proc_flashlight_read(char *page, char **start, off_t off,
+        int count, int *eof, void *data)
+{
+    return sprintf(page, "%d\n", atomic_read(&syna_rmi4_data->flashlight_enable));
+}
+
+static int synaptics_rmi4_proc_flashlight_write(struct file *filp, const char __user *buff,
+        unsigned long len, void *data)
+{
+    int enable;
+    char buf[2];
+
+    if (len > 2)
+        return 0;
+
+    if (copy_from_user(buf, buff, len)) {
+        print_ts(TS_DEBUG, KERN_ERR "Read proc input error.\n");
+        return -EFAULT;
+    }
+
+    enable = (buf[0] == '0') ? 0 : 1;
+
+    atomic_set(&syna_rmi4_data->flashlight_enable, enable);
+
+    return len;
+}
+
+static int keypad_enable_proc_read(char *page, char **start, off_t off,
+        int count, int *eof, void *data)
+{
+    struct synaptics_rmi4_data *ts = data;
+    return sprintf(page, "%d\n", atomic_read(&ts->keypad_enable));
+}
+
+static int keypad_enable_proc_write(struct file *file, const char __user *buffer,
+        unsigned long count, void *data)
+{
+    struct synaptics_rmi4_data *ts = data;
+    char buf[2];
+    unsigned int val = 0;
+
+    if (count > 2)
+        return count;
+
+    if (copy_from_user(buf, buffer, count)) {
+        printk(KERN_ERR "%s: read proc input error.\n", __func__);
+        return count;
+    }
+
+    val = (buf[0] == '0' ? 0 : 1);
+    atomic_set(&ts->keypad_enable, val);
+    if (val) {
+        set_bit(KEY_BACK, ts->input_dev->keybit);
+        set_bit(KEY_MENU, ts->input_dev->keybit);
+        set_bit(KEY_HOMEPAGE, ts->input_dev->keybit);
+    } else {
+        clear_bit(KEY_BACK, ts->input_dev->keybit);
+        clear_bit(KEY_MENU, ts->input_dev->keybit);
+        clear_bit(KEY_HOMEPAGE, ts->input_dev->keybit);
+    }
+    input_sync(ts->input_dev);
+
+    return count;
+}
 
 static void synaptics_rmi4_grove_enable(bool enable)
 {
@@ -1504,10 +1646,32 @@ static int synaptics_rmi4_init_touchpanel_proc(void)
         proc_entry->write_proc = synaptics_rmi4_charge_pump_write;        
     }
 
-    proc_entry = create_proc_entry("double_tap_enable", 0666, procdir);
+    // double tap to wake
+    proc_entry = create_proc_entry("double_tap_enable", 0664, procdir);
     if (proc_entry) {
-        proc_entry->write_proc = synaptics_rmi4_gesture_proc_write;
-        proc_entry->read_proc = synaptics_rmi4_gesture_proc_read;
+        proc_entry->write_proc = synaptics_rmi4_proc_double_tap_write;
+        proc_entry->read_proc = synaptics_rmi4_proc_double_tap_read;
+    }
+
+    // wake to camera
+    proc_entry = create_proc_entry("camera_enable", 0664, procdir);
+    if (proc_entry) {
+        proc_entry->write_proc = synaptics_rmi4_proc_camera_write;
+        proc_entry->read_proc = synaptics_rmi4_proc_camera_read;
+    }
+
+    // wake to music
+    proc_entry = create_proc_entry("music_enable", 0664, procdir);
+    if (proc_entry) {
+        proc_entry->write_proc = synaptics_rmi4_proc_music_write;
+        proc_entry->read_proc = synaptics_rmi4_proc_music_read;
+    }
+
+    // wake to flashlight
+    proc_entry = create_proc_entry("flashlight_enable", 0664, procdir);
+    if (proc_entry) {
+        proc_entry->write_proc = synaptics_rmi4_proc_flashlight_write;
+        proc_entry->read_proc = synaptics_rmi4_proc_flashlight_read;
     }
 	//huqiao add node for reading gesture register start
 	proc_entry = create_proc_entry("double_tap_read_reg", 0666, procdir);
@@ -1521,6 +1685,13 @@ static int synaptics_rmi4_init_touchpanel_proc(void)
     proc_entry = create_proc_entry("coordinate", 0444, procdir);
     if (proc_entry) {
         proc_entry->read_proc = synaptics_rmi4_crood_read;
+    }
+
+    proc_entry = create_proc_entry("keypad_enable", 0664, procdir);
+    if (proc_entry) {
+        proc_entry->write_proc = keypad_enable_proc_write;
+        proc_entry->read_proc = keypad_enable_proc_read;
+        proc_entry->data = syna_rmi4_data;
     }
 
     printk("%s over.\n", __func__);
@@ -2932,9 +3103,9 @@ hw_shutdown:
 } 
 
 static unsigned char synaptics_rmi4_update_gesture(unsigned char *gesture,unsigned char *gestureext) {
-    int i ;
-    unsigned char keyvalue = 0 ;
-    unsigned char gesturemode = UnkownGestrue ;
+    int i;
+    unsigned char keyvalue = 0;
+    unsigned char gesturemode = UnknownGesture;
     unsigned short points[16];
 
     for(i = 0 ; i < 2*6; i++) {
@@ -2955,8 +3126,9 @@ static unsigned char synaptics_rmi4_update_gesture(unsigned char *gesture,unsign
                                                     "not circle");
     switch(gesture[0]) {
         case SYNA_ONE_FINGER_CIRCLE:
-            gesturemode = Circle ;
-            keyvalue = KEY_F4;
+            gesturemode = Circle;
+            if (atomic_read(&syna_rmi4_data->camera_enable))
+                keyvalue = KEY_GESTURE_CIRCLE;
             break ;
 
         case SYNA_TWO_FINGER_SWIPE:
@@ -2966,42 +3138,46 @@ static unsigned char synaptics_rmi4_update_gesture(unsigned char *gesture,unsign
                 (gestureext[24] == 0x44) ? Up2DownSwip      :
                 (gestureext[24] == 0x48) ? Down2UpSwip      :
                 (gestureext[24] == 0x80) ? DouSwip          :
-                UnkownGestrue;
+                UnknownGesture;
 
             if( gesturemode==DouSwip ||
                     gesturemode==Down2UpSwip ||
                     gesturemode==Up2DownSwip) {
                 if(abs(points[3] - points[1]) <= 800)   // first point y2 - sencond point y1
-                    gesturemode=UnkownGestrue;
+                    gesturemode=UnknownGesture;
             }
 
-            if(gesturemode!=UnkownGestrue)	{  
-                keyvalue = KEY_F6;
-            } 
+            if (gesturemode == DouSwip) {
+                if (atomic_read(&syna_rmi4_data->music_enable))
+                    keyvalue = KEY_GESTURE_SWIPE_DOWN;
+			}
             break ;
 
         case SYNA_ONE_FINGER_DOUBLE_TAP:
             gesturemode = DouTap ;
-            keyvalue = KEY_F3;
+			if (atomic_read(&syna_rmi4_data->double_tap_enable))
+				keyvalue = KEY_POWER;
             break ;
 
         case SYNA_ONE_FINGER_DIRECTION:
             switch(gesture[2]){
                 case 0x01:  //UP
                     gesturemode = DownVee ;
-                    keyvalue = KEY_F5;
                     break;
                 case 0x02:  //DOWN
                     gesturemode = UpVee ;
-                    keyvalue = KEY_F5;
+                    if (atomic_read(&syna_rmi4_data->flashlight_enable))
+                        keyvalue = KEY_GESTURE_V;
                     break;
                 case 0x04:  //LEFT
                     gesturemode = RightVee ;
-                    keyvalue = KEY_F7;
+                    if (atomic_read(&syna_rmi4_data->music_enable))
+                        keyvalue = KEY_GESTURE_LTR;
                     break;
                 case 0x08:  //RIGHT
                     gesturemode = LeftVee ;
-                    keyvalue = KEY_F8;
+                    if (atomic_read(&syna_rmi4_data->music_enable))
+                        keyvalue = KEY_GESTURE_GTR;
                     break;
             }
             break;
@@ -3010,13 +3186,13 @@ static unsigned char synaptics_rmi4_update_gesture(unsigned char *gesture,unsign
             gesturemode = 
                 (gesture[2] == 0x77 && gesture[3] == 0x00) ? Wgestrue :
                 (gesture[2] == 0x6d && gesture[3] == 0x00) ? Mgestrue :
-                UnkownGestrue;
+                UnknownGesture;
 
             keyvalue = KEY_F9;
             break ;
     }
 
-    if(gesturemode != UnkownGestrue) 
+    if(gesturemode != UnknownGesture)
     {
         syna_rmi4_data->gesturemode = gesturemode ;
         memcpy(syna_rmi4_data->points,points,sizeof(syna_rmi4_data->points));
@@ -3027,7 +3203,7 @@ static unsigned char synaptics_rmi4_update_gesture(unsigned char *gesture,unsign
     }
 
     print_ts(TS_ERROR, "%s, gesture keyvalue = %d, gesturemode = %d (%s).\n", __func__, keyvalue, gesturemode, 
-                        (gesturemode ==  0) ? "UnkownGestrue" :
+                        (gesturemode ==  0) ? "UnknownGesture" :
                         (gesturemode ==  1) ? "Double Tap" :
                         (gesturemode ==  2) ? "V" :
                         (gesturemode ==  3) ? "^" :
@@ -3084,37 +3260,31 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
     extra_data = (struct synaptics_rmi4_f12_extra_data *)fhandler->extra;
     size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
 
-    if(rmi4_data->gesture ) 
-    {
-        retval = synaptics_rmi4_i2c_read(rmi4_data, SYNA_ADDR_GESTURE_OFFSET, gesture, sizeof(gesture));
-
+    if (atomic_read(&rmi4_data->syna_use_gesture)) {
+        retval = synaptics_rmi4_i2c_read(rmi4_data,
+                SYNA_ADDR_GESTURE_OFFSET,
+                gesture,
+                sizeof(gesture));
 #if (defined(CONFIG_OPPO_MSM_14021) || defined(CONFIG_OPPO_MSM_14024))
         retval = synaptics_rmi4_i2c_read(rmi4_data, SYNA_ADDR_GESTURE_EXT_S3528, gestureext, sizeof(gestureext));
 #else 
         retval = synaptics_rmi4_i2c_read(rmi4_data, SYNA_ADDR_GESTURE_EXT_S3508, gestureext, sizeof(gestureext));
 #endif
 
-		if(gesture[0]==0x0c) //mingqiang.guo@phone.bsp 厂家新添加了三击手势代号为0x0c，OPPO未用到，这个会影响到双击亮屏成功率，
-							 //当成双击亮屏处理,双击或者多击成功率提高，与以前量产固件保持一致
-			gesture[0]=0x03;
-		
-		if(gesture[0] != 0) //如果为双击唤醒手势中断，持有该wake_lock,如果当前正在跑suspend流程，将会调用resume唤醒系统,放弃suspend
+		if(gesture[0] != 0)
 		   wake_lock_timeout(&tp_wake_lock, 5 * HZ);
 
-		if(gesture[0]) 
-		{
-			keyvalue = synaptics_rmi4_update_gesture(gesture,gestureext);
-            if(keyvalue)
-            {
-                keyvalue = KEY_F4 ;
-
-                print_ts(TS_ERROR, KERN_ERR"report gesture keyvalue!\n");
-
+        if (gesture[0]) {
+            keyvalue = synaptics_rmi4_update_gesture(gesture,gestureext);
+            if (keyvalue && keyvalue != KEY_F9) {
                 input_report_key(rmi4_data->input_dev, keyvalue, 1);
                 input_sync(rmi4_data->input_dev);
                 input_report_key(rmi4_data->input_dev, keyvalue, 0);
                 input_sync(rmi4_data->input_dev);
             }
+            print_ts(TS_ERROR, KERN_ERR "[syna]gesture: %2x %2x %2x %2x %2x\n",gesture[0],gesture[1],gesture[2],gesture[3],gesture[4]);
+            print_ts(TS_DEBUG, KERN_ERR "[syna]gestureext: %2x %2x %2x %2x %2x %2x %2x %2x %2x\n",
+                    gestureext[0],gestureext[1],gestureext[2],gestureext[3],gestureext[4],gestureext[5],gestureext[6],gestureext[7],gestureext[24]);
         }
     }
 
@@ -3448,7 +3618,6 @@ static void int_key_report(struct synaptics_rmi4_data *rmi4_data)
 static void synaptics_rmi4_sensor_report(struct synaptics_rmi4_data *rmi4_data)
 {
     int retval;
-    char gesture_0d;
     unsigned char data[MAX_INTR_REGISTERS + 1];
     unsigned char *intr = &data[1];
     struct synaptics_rmi4_f01_device_status status;
@@ -3512,21 +3681,8 @@ static void synaptics_rmi4_sensor_report(struct synaptics_rmi4_data *rmi4_data)
     }
     if(data[1] &0x10)
     {
-        if(rmi4_data->gesture) // tp gesture , double tap virtual key area
-        {
-            retval = synaptics_rmi4_i2c_read(rmi4_data, SYNA_ADDR_F1A_0D_DATA02, &gesture_0d, sizeof(gesture_0d));
-
-            print_ts(TS_ERROR, "Gesture Double tap (gesture_0d = 0x%x) \n", gesture_0d);
-
-            syna_rmi4_data->gesturemode = 1; // double tap 
-
-            input_report_key(rmi4_data->input_dev, KEY_F4, 1);
-            input_sync(rmi4_data->input_dev);
-            input_report_key(rmi4_data->input_dev, KEY_F4, 0);
-            input_sync(rmi4_data->input_dev);            
-        }
-
-        int_key_report(rmi4_data);
+        if(atomic_read(&rmi4_data->keypad_enable))
+            int_key_report(rmi4_data);
     }
 
     mutex_lock(&exp_data.mutex);
@@ -4430,12 +4586,12 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
     set_bit(KEY_MENU, rmi4_data->input_dev->keybit);
     set_bit(KEY_HOMEPAGE, rmi4_data->input_dev->keybit);
     set_bit(KEY_F3, rmi4_data->input_dev->keybit);
-    set_bit(KEY_F4, rmi4_data->input_dev->keybit);
-    set_bit(KEY_F5, rmi4_data->input_dev->keybit);
-    set_bit(KEY_F6, rmi4_data->input_dev->keybit);
-    set_bit(KEY_F7, rmi4_data->input_dev->keybit);
-    set_bit(KEY_F8, rmi4_data->input_dev->keybit);
     set_bit(KEY_POWER, rmi4_data->input_dev->keybit);
+    set_bit(KEY_GESTURE_CIRCLE, rmi4_data->input_dev->keybit);
+    set_bit(KEY_GESTURE_SWIPE_DOWN, rmi4_data->input_dev->keybit);
+    set_bit(KEY_GESTURE_V, rmi4_data->input_dev->keybit);
+    set_bit(KEY_GESTURE_LTR, rmi4_data->input_dev->keybit);
+    set_bit(KEY_GESTURE_GTR, rmi4_data->input_dev->keybit);
 
 #if (defined(CONFIG_OPPO_MSM_14021) || defined(CONFIG_OPPO_MSM_14024))
     rmi4_data->sensor_max_x = 1080; // sometimes , the value of sensor_max_x(y) we read from registers is wrong.
@@ -4505,6 +4661,15 @@ static int synaptics_rmi4_set_input_dev(struct synaptics_rmi4_data *rmi4_data)
     set_bit(EV_ABS, rmi4_data->input_dev->evbit);
     set_bit(BTN_TOUCH, rmi4_data->input_dev->keybit);
     set_bit(BTN_TOOL_FINGER, rmi4_data->input_dev->keybit);
+
+    atomic_set(&rmi4_data->keypad_enable, 1);
+
+    atomic_set(&rmi4_data->syna_use_gesture, 0);
+    atomic_set(&rmi4_data->double_tap_enable, 1);
+    atomic_set(&rmi4_data->camera_enable, 0);
+    atomic_set(&rmi4_data->music_enable, 0);
+    atomic_set(&rmi4_data->flashlight_enable, 0);
+
 #ifdef INPUT_PROP_DIRECT
     set_bit(INPUT_PROP_DIRECT, rmi4_data->input_dev->propbit);
 #endif
@@ -4579,6 +4744,10 @@ static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data)
     {
         print_ts(TS_INFO,"%s, set configured failed !\n", __func__);
         return retval;        
+    }
+
+    if (atomic_read(&rmi4_data->syna_use_gesture)) {
+        synaptics_enable_gesture(rmi4_data, true);
     }
 
     tmp_new = 0x4 ;
@@ -5276,11 +5445,18 @@ static int synaptics_rmi4_suspend(struct device *dev)
         synaptics_rmi4_grove_enable(false);
     }
 
-    if(rmi4_data->gesture_enable)
-    {
+    atomic_set(&rmi4_data->syna_use_gesture,
+            atomic_read(&rmi4_data->double_tap_enable) ||
+            atomic_read(&rmi4_data->camera_enable) ||
+            atomic_read(&rmi4_data->music_enable) ||
+            atomic_read(&rmi4_data->flashlight_enable) ? 1 : 0);
+
+    if (atomic_read(&rmi4_data->syna_use_gesture) || rmi4_data->pdoze_enable) {
         synaptics_enable_gesture(rmi4_data,true);
+        //synaptics_enable_pdoze(rmi4_data,true);
         synaptics_enable_irqwake(rmi4_data,true);
-        goto GO_OUT;        
+        rmi4_data->pwrrunning = false;
+        goto GO_OUT;
     }
 
     rmi4_data->touch_stopped = true;
@@ -5350,12 +5526,17 @@ static void speedup_synaptics_resume(struct work_struct *work)
         synaptics_rmi4_grove_enable(true);
     }
 
-    if(rmi4_data->gesture_enable)
-    {
+    if (atomic_read(&rmi4_data->syna_use_gesture) || rmi4_data->pdoze_enable) {
         synaptics_enable_gesture(rmi4_data,false);
+        //synaptics_enable_pdoze(rmi4_data,false);
         synaptics_enable_irqwake(rmi4_data,false);
-        rmi4_data->pwrrunning = false ;
-        goto GO_RETURN;    
+        atomic_set(&rmi4_data->syna_use_gesture,
+            atomic_read(&rmi4_data->double_tap_enable) ||
+            atomic_read(&rmi4_data->camera_enable) ||
+            atomic_read(&rmi4_data->music_enable) ||
+            atomic_read(&rmi4_data->flashlight_enable) ? 1 : 0);
+        rmi4_data->pwrrunning = false;
+        goto GO_RETURN;
     }
 
     synaptics_rmi4_sensor_wake(rmi4_data);
@@ -5390,6 +5571,18 @@ static int synaptics_rmi4_resume(struct device *dev)
 
     //mingqiang.guo add for LCD show later when push power button  and  two click  in gesture   
     print_ts(TS_DEBUG,"%s is called start \n",__func__);
+
+    if (atomic_read(&rmi4_data->syna_use_gesture) || rmi4_data->pdoze_enable) {
+        synaptics_enable_gesture(rmi4_data,false);
+        //synaptics_enable_pdoze(rmi4_data,false);
+        synaptics_enable_irqwake(rmi4_data,false);
+        atomic_set(&rmi4_data->syna_use_gesture,
+            atomic_read(&rmi4_data->double_tap_enable) ||
+            atomic_read(&rmi4_data->camera_enable) ||
+            atomic_read(&rmi4_data->music_enable) ||
+            atomic_read(&rmi4_data->flashlight_enable) ? 1 : 0);
+        rmi4_data->pwrrunning = false;
+    }
 
     //resume tp's vdd power
     if (platform_data->regulator_en) {
