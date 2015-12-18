@@ -271,6 +271,10 @@ struct mdss_dsi_ctrl_pdata {
 	int irq_cnt;
 	int rst_gpio;
 	int disp_en_gpio;
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/08/10  Add for 14021 lcd enable */
+	int disp_en_gpio76;	
+#endif /*CONFIG_MACH_OPPO*/
 	int disp_te_gpio;
 	int mode_gpio;
 	int disp_te_gpio_requested;
@@ -311,7 +315,10 @@ struct mdss_dsi_ctrl_pdata {
 	struct mutex cmd_mutex;
 
 	bool ulps;
-
+#ifdef CONFIG_MACH_OPPO 
+//liuminglei@oneplus.bsp, 2014/12/26, Add for  sync with android 4.4
+	int index;
+#endif /* CONFIG_MACH_OPPO */	
 	struct dsi_buf tx_buf;
 	struct dsi_buf rx_buf;
 	struct dsi_buf status_buf;

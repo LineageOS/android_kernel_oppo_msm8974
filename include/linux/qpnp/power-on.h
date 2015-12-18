@@ -70,4 +70,8 @@ int qpnp_pon_wd_config(bool enable)
 }
 #endif
 
+#ifdef CONFIG_MACH_OPPO
+int qpnp_silence_write(u16 addr, u8 val);
+#endif
+
 #endif

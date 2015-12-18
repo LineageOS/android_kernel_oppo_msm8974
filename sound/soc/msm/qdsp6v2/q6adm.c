@@ -1198,7 +1198,8 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 			(open.topology_id == VPM_TX_DM_RFECNS_COPP_TOPOLOGY))
 				rate = 16000;
 
-		if (perf_mode == ULTRA_LOW_LATENCY_PCM_MODE) {
+		if (perf_mode == ULTRA_LOW_LATENCY_PCM_MODE||
+		    perf_mode == LOW_LATENCY_PCM_MODE) { //John.Xu add to fix Waves effect not work issue
 			open.topology_id = NULL_COPP_TOPOLOGY;
 			rate = ULL_SUPPORTED_SAMPLE_RATE;
 			if(channel_mode > ULL_MAX_SUPPORTED_CHANNEL)
@@ -1424,8 +1425,11 @@ int adm_matrix_map(int session_id, int path, int num_copps,
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-
+#ifndef CONFIG_MACH_OPPO //John.Xu modified for waves effect not works
 	if (perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) {
+#else
+	if (!perf_mode) {
+#endif
 		for (i = 0; i < num_copps; i++)
 			send_adm_cal(port_id[i], path, perf_mode);
 
@@ -1746,8 +1750,11 @@ int adm_close(int port_id, int perf_mode)
 			goto fail_cmd;
 		}
 	}
-
+#ifndef CONFIG_MACH_OPPO //modified by John.Xu for Waves effect not works when open touch sound
 	if (perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) {
+#else
+	if (!perf_mode) {
+#endif
 		pr_debug("%s: remove adm device from rtac\n", __func__);
 		rtac_remove_adm_device(port_id, copp_id);
 	}
