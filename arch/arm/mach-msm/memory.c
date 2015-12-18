@@ -381,6 +381,16 @@ mem_remove:
 				pr_info("Node %s removed memory %x-%x\n", uname,
 				memory_start, memory_start+memory_size);
 		}
+		//#ifdef CONFIG_MACH_OPPO
+		//WeiHong.Li@OnLineRD.AirService.Module, 2013/10/25, Add for nv backup and restore		
+		ret = memblock_remove(0x05900000, 0x100000);
+		if (ret)
+			WARN(1, "Failed to remove memory %x-%x\n",
+			0x05900000, 0x05900000+0x100000);
+		else
+			pr_info("Node %s removed memory %x-%x\n", uname,
+			0x05900000, 0x05900000+0x100000);
+		//#endif /* CONFIG_MACH_OPPO */	
 	}
 
 mem_reserve:
