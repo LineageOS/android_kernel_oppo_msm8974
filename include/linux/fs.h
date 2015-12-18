@@ -766,6 +766,11 @@ struct inode {
 	gid_t			i_gid;
 	unsigned int		i_flags;
 
+#ifdef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/06/04, Add for ignore case
+	unsigned short		i_ignore_case;
+#endif /* CONFIG_MACH_OPPO */
+
 #ifdef CONFIG_FS_POSIX_ACL
 	struct posix_acl	*i_acl;
 	struct posix_acl	*i_default_acl;

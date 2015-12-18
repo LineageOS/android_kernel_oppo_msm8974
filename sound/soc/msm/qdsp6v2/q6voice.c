@@ -28,8 +28,14 @@
 #include "audio_acdb.h"
 #include "q6voice.h"
 
-
+#ifndef CONFIG_MACH_OPPO
+/* xiaojun.lv@PhoneSW.AudioDrv, 2014/12/08, Modify for case 01806949 CR#681025
+ * DALSysLogEvent.c OUT OF MEM, more at Volte */
+#define TIMEOUT_MS 300 
+#else /* CONFIG_MACH_OPPO */
 #define TIMEOUT_MS 500
+#endif /* CONFIG_MACH_OPPO */
+
 
 
 #define CMD_STATUS_SUCCESS 0

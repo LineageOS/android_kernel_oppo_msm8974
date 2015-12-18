@@ -1,0 +1,76 @@
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&pm8941_lsid0 {
+	qcom,power-on@800 {
+		qcom,pon_2 {
+			linux,code = <0>;
+		};
+	};
+
+	qcom,bms {
+		qcom,low-voltage-threshold = <3520000>;
+	};
+
+	qcom,charger {
+		qcom,vddmax-mv = <4320>;
+		qcom,vddsafe-mv = <4320>;
+		qcom,vinmin-mv = <4400>;
+		qcom,ibatmax-ma = <2000>;
+		qcom,ibatterm-ma = <150>;
+		qcom,ibatsafe-ma = <2000>;
+		qcom,thermal-mitigation = <2000 900 900 200>;
+		qcom,little-cool-bat-mv = <4320>;
+		qcom,ibatmax-little-cool-ma = <1400>;
+		qcom,cool-bat-mv = <4200>;
+		qcom,ibatmax-cool-ma = <900>;
+		qcom,warm-bat-mv = <4100>;
+		qcom,ibatmax-warm-ma = <900>;
+
+		qcom,boost@1500 {
+			status = "okay";
+		};
+	};
+
+	qcom,pm8941_rtc {
+		qcom,qpnp-rtc-alarm-pwrup = <1>;
+	};
+
+	iadc@3600 {
+		chan@0 {
+			qcom,pre-div-channel-scaling = <1>;
+			qcom,calibration-type = "absolute";
+			qcom,scale-function = <0>;
+			qcom,hw-settle-time = <0>;
+		};
+	};
+};
+
+&pm8941_lsid1 {
+	qcom,vibrator@c000 {
+		qcom,vib-timeout-ms = <15000>;
+		qcom,vib-vtg-level-mV = <3100>;
+		qcom,vib-vtg-min-mV = <1900>;
+		status = "okay";
+	};
+
+	pwm@b500 {
+		qcom,period = <8000>;
+		qcom,duty = <6000>;
+		qcom,mode-select = <0>;	/* Enable PWM signal by default */
+		status = "okay";
+		qcom,pwm {
+			qcom,duty = <4000>;
+			label = "pwm";
+		};
+	};
+};
