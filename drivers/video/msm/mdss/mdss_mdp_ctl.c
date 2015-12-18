@@ -33,6 +33,9 @@ static inline u64 fudge_factor(u64 val, u32 numer, u32 denom)
 	do_div(result, denom);
 	return result;
 }
+/* OPPO 2014-02-11 yxq add begin for Find7S */
+#include <linux/pcb_version.h>
+/* OPPO 2014-02-11 yxq add end */
 
 static inline u64 apply_fudge_factor(u64 val,
 	struct mdss_fudge_factor *factor)
@@ -1492,6 +1495,11 @@ static int mdss_mdp_ctl_setup_wfd(struct mdss_mdp_ctl *ctl)
 	return 0;
 }
 
+#ifdef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/15  Add for find7s swap DSI port */
+extern int LCD_id;
+#endif /*CONFIG_MACH_OPPO*/
+
 struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 				       struct msm_fb_data_type *mfd)
 {
@@ -1518,19 +1526,49 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 		break;
 	case MIPI_VIDEO_PANEL:
 		ctl->is_video_mode = true;
+#ifndef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/15  Modify for find7s swap DSI port */
 		if (pdata->panel_info.pdest == DISPLAY_1)
 			ctl->intf_num = MDSS_MDP_INTF1;
 		else
 			ctl->intf_num = MDSS_MDP_INTF2;
+#else /*CONFIG_MACH_OPPO*/
+		if(((get_pcb_version()>=22) && (get_pcb_version()<30)) || LCD_id == 4){
+			if (pdata->panel_info.pdest == DISPLAY_1)
+				ctl->intf_num = MDSS_MDP_INTF2;
+			else
+				ctl->intf_num = MDSS_MDP_INTF1;
+		}else{
+			if (pdata->panel_info.pdest == DISPLAY_1)
+				ctl->intf_num = MDSS_MDP_INTF1;
+			else
+				ctl->intf_num = MDSS_MDP_INTF2;
+		}
+#endif /*CONFIG_MACH_OPPO*/
 		ctl->intf_type = MDSS_INTF_DSI;
 		ctl->opmode = MDSS_MDP_CTL_OP_VIDEO_MODE;
 		ctl->start_fnc = mdss_mdp_video_start;
 		break;
 	case MIPI_CMD_PANEL:
+#ifndef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/07/30  Modify for find7s cmd panel swap DSI */
 		if (pdata->panel_info.pdest == DISPLAY_1)
 			ctl->intf_num = MDSS_MDP_INTF1;
 		else
 			ctl->intf_num = MDSS_MDP_INTF2;
+#else /*CONFIG_MACH_OPPO*/
+		if(((get_pcb_version()>=22) && (get_pcb_version()<30)) || LCD_id == 4){
+			if (pdata->panel_info.pdest == DISPLAY_1)
+				ctl->intf_num = MDSS_MDP_INTF2;
+			else
+				ctl->intf_num = MDSS_MDP_INTF1;
+		}else{
+			if (pdata->panel_info.pdest == DISPLAY_1)
+				ctl->intf_num = MDSS_MDP_INTF1;
+			else
+				ctl->intf_num = MDSS_MDP_INTF2;
+		}
+#endif /*CONFIG_MACH_OPPO*/
 		ctl->intf_type = MDSS_INTF_DSI;
 		ctl->opmode = MDSS_MDP_CTL_OP_CMD_MODE;
 		ctl->start_fnc = mdss_mdp_cmd_start;

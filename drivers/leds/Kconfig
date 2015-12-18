@@ -382,6 +382,15 @@ config LEDS_PMIC8058
 	  (Power Management IC) chip on Qualcomm reference boards,
 	  for example SURF and FFAs.
 
+config LEDS_SN3193
+	tristate "LED driver for the SN3193"
+	default n
+	depends on LEDS_CLASS
+	depends on I2C
+	help
+	  This option enabled support for SN3193 RGB LED driver chips
+	  accessed via I2C bus.
+
 config LEDS_INTEL_SS4200
 	tristate "LED driver for Intel NAS SS4200 series"
 	depends on LEDS_CLASS

@@ -85,7 +85,7 @@ static struct device_attribute attrs[] = {
 	__ATTR(length, S_IWUSR | S_IWGRP,
 			NULL,
 			rmidev_sysfs_length_store),
-	__ATTR(data, (S_IWUSR | S_IWGRP),
+	__ATTR(data, (S_IRUGO | S_IWUSR | S_IWGRP),
 			rmidev_sysfs_data_show,
 			rmidev_sysfs_data_store),
 };
@@ -461,7 +461,7 @@ static void rmidev_device_cleanup(struct rmidev_data *dev_data)
 	return;
 }
 
-static char *rmi_char_devnode(struct device *dev, umode_t *mode)
+static char *rmi_char_devnode(struct device *dev, mode_t *mode)
 {
 	if (!mode)
 		return NULL;

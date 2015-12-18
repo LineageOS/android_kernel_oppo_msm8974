@@ -251,6 +251,12 @@ config ARCH_APQ8064
 	select MSM_USE_USER_ACCESSIBLE_TIMERS
 	select MSM_CPU_PWRCTL
 
+config OPPO_MSM_14021
+	bool "OPPO_MSM_14021"
+
+config OPPO_MSM_FIND7
+	bool "OPPO_MSM_FIND7"
+
 config ARCH_MSM8974
 	bool "MSM8974"
 	select ARCH_MSM_KRAITMP
@@ -1139,6 +1145,8 @@ config MACH_FSM9XXX_SURF
 	  FFA board.
 
 endmenu
+
+source "arch/arm/mach-msm/oppo/Kconfig"
 
 config MSM_STACKED_MEMORY
 	bool "Stacked Memory"
