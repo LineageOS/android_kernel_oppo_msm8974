@@ -60,6 +60,13 @@
 #define use_restart_v2()	0
 #endif
 
+#ifdef CONFIG_MACH_OPPO
+#define RTC_BOOT_MODE  0x88F
+#define RTC_FASTBOOT_MODE 0x01
+#define RTC_RECOVERY_MODE 0x02
+#define RTC_SILENCE_MODE  0x03
+#endif
+
 static int restart_mode;
 void *restart_reason;
 
@@ -74,7 +81,11 @@ static void *emergency_dload_mode_addr;
 
 /* Download mode master kill-switch */
 static int dload_set(const char *val, struct kernel_param *kp);
+#ifdef CONFIG_MACH_OPPO
+static int download_mode = 0;
+#else
 static int download_mode = 1;
+#endif
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 static int panic_prep_restart(struct notifier_block *this,
@@ -270,18 +281,53 @@ static void msm_restart_prepare(const char *cmd)
 	pm8xxx_reset_pwr_off(1);
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (get_dload_mode() || (cmd != NULL && cmd[0] != '\0'))
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
-	else
+	if (get_dload_mode() || (cmd != NULL && cmd[0] != '\0')) {
+#ifdef CONFIG_MACH_OPPO
+		if (!strncmp(cmd, "bootloader", 10))
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
+		else if (!strncmp(cmd, "recovery", 8))
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
+		else if (!strncmp(cmd, "silence", 7))
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
+		else
+#endif
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	} else
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
+#ifdef CONFIG_MACH_OPPO
+			qpnp_silence_write(RTC_BOOT_MODE, RTC_FASTBOOT_MODE);
+#else
 			__raw_writel(0x77665500, restart_reason);
+#endif
 		} else if (!strncmp(cmd, "recovery", 8)) {
+#ifdef CONFIG_MACH_OPPO
+			qpnp_silence_write(RTC_BOOT_MODE, RTC_RECOVERY_MODE);
+#else
 			__raw_writel(0x77665502, restart_reason);
+#endif
 		} else if (!strcmp(cmd, "rtc")) {
 			__raw_writel(0x77665503, restart_reason);
+#ifdef CONFIG_MACH_OPPO
+		} else if (!strncmp(cmd, "ftm", 3)) {
+			__raw_writel(0x77665504, restart_reason);
+		} else if (!strncmp(cmd, "wlan", 4)) {
+			__raw_writel(0x77665505, restart_reason);
+		} else if (!strncmp(cmd, "rf", 2)) {
+			__raw_writel(0x77665506, restart_reason);
+		} else if (!strncmp(cmd, "mos", 3)) {
+			__raw_writel(0x77665507, restart_reason);
+		} else if (!strncmp(cmd, "kernel", 6)) {
+			__raw_writel(0x7766550a, restart_reason);
+		} else if (!strncmp(cmd, "modem", 5)) {
+			__raw_writel(0x7766550b, restart_reason);
+		} else if (!strncmp(cmd, "android", 7)) {
+			__raw_writel(0x7766550c, restart_reason);
+		} else if (!strncmp(cmd, "silence", 7)) {
+			qpnp_silence_write(RTC_BOOT_MODE, RTC_SILENCE_MODE);
+#endif
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
@@ -362,6 +408,9 @@ static int __init msm_restart_init(void)
 #endif
 	msm_tmr0_base = msm_timer_get_timer0_base();
 	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;
+#ifdef CONFIG_MACH_OPPO
+	__raw_writel(0x7766550a, restart_reason);
+#endif
 	pm_power_off = msm_power_off;
 
 	if (scm_is_call_available(SCM_SVC_PWR, SCM_IO_DISABLE_PMIC_ARBITER) > 0)
