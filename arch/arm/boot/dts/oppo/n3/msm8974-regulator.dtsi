@@ -1,0 +1,68 @@
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+/* QPNP controlled regulators: */
+
+&pm8941_lsid1 {
+	regulator@a000 {
+		regulator-min-microvolt = <4500000>;
+		regulator-max-microvolt = <4500000>;
+	};
+};
+
+/* RPM controlled regulators: */
+
+&rpm_bus {
+	rpm-regulator-ldoa3 {
+		regulator-l3 {
+			regulator-min-microvolt = <1000000>;
+			qcom,init-voltage = <1000000>;
+		};
+	};
+
+	rpm-regulator-ldoa17 {
+		regulator-l17 {
+			regulator-min-microvolt = <2700000>;
+			qcom,init-voltage = <2700000>;
+		};
+	};
+
+	rpm-regulator-ldoa23 {
+		regulator-l23 {
+			regulator-min-microvolt = <2800000>;
+			qcom,init-voltage = <2800000>;
+		};
+	};
+};
+
+&soc {
+	krait-pdn@f9011000 {
+		qcom,ldo-disable;
+
+		regulator@f9088000 {
+			regulator-max-microvolt = <1300000>;
+		};
+
+		regulator@f9098000 {
+			regulator-max-microvolt = <1300000>;
+		};
+
+		regulator@f90a8000 {
+			regulator-max-microvolt = <1300000>;
+		};
+
+		regulator@f90b8000 {
+			regulator-max-microvolt = <1300000>;
+		};
+	};
+};
