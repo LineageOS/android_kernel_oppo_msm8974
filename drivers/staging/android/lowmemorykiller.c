@@ -41,6 +41,10 @@
 #include <linux/delay.h>
 #include <linux/swap.h>
 #include <linux/fs.h>
+#ifdef CONFIG_MACH_OPPO
+//Lycan.Wang@Prd.BasicDrv, 2014-07-29 Add for workaround method for SHM memleak
+#include <linux/ipc_namespace.h>
+#endif /* CONFIG_MACH_OPPO */
 
 #ifdef CONFIG_HIGHMEM
 #define _ZONE ZONE_HIGHMEM
@@ -226,6 +230,21 @@ void tune_lmk_param(int *other_free, int *other_file, struct shrink_control *sc)
 	}
 }
 
+#ifdef CONFIG_MACH_OPPO
+//jiemin.zhu@Swap.Android.Kernel, 2015-03-20, modify for 8974L for orphan task
+static void orphan_foreground_task_kill(struct task_struct *task, short adj, short min_score_adj)
+{
+	if (min_score_adj == 0)
+		return;
+
+	if (task->parent->pid == 1 && adj == 0) {
+		lowmem_print(1, "kill orphan foreground task %s, pid %d, adj %hd, min_score_adj %hd\n", 
+					task->comm, task->pid, adj, min_score_adj);
+		send_sig(SIGKILL, task, 0);
+	}
+}
+#endif /* CONFIG_MACH_OPPO */
+
 static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
@@ -316,7 +335,16 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
+#ifdef CONFIG_MACH_OPPO
+//jiemin.zhu@Swap.Android.Kernel, 2015-03-20, modify for 8974L for orphan task
+			tasksize = get_mm_rss(p->mm);
+#endif /* VENDOR_EIDT */
 			task_unlock(p);
+#ifdef CONFIG_MACH_OPPO
+//jiemin.zhu@Swap.Android.Kernel, 2015-03-20, modify for 8974L for orphan task
+			if (tasksize > 0)
+				orphan_foreground_task_kill(p, oom_score_adj, min_score_adj);
+#endif /* VENDOR_EIDT */
 			continue;
 		}
 		tasksize = get_mm_rss(p->mm);
@@ -345,6 +373,18 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		rem -= selected_tasksize;
 		rcu_read_unlock();
+#ifdef CONFIG_MACH_OPPO
+        //Lycan.Wang@Prd.BasicDrv, 2014-07-29 Add for workaround method for SHM memleak
+        if (totalram_pages / global_page_state(NR_SHMEM) < 10) {
+            struct ipc_namespace *ns = current->nsproxy->ipc_ns;
+            int backup_shm_rmid_forced = ns->shm_rmid_forced;
+
+            lowmem_print(1, "Shmem too large (%ldKB)\n Try to release IPC shmem !\n", global_page_state(NR_SHMEM) * (long)(PAGE_SIZE / 1024));
+            ns->shm_rmid_forced = 1;
+            shm_destroy_orphaned(ns);
+            ns->shm_rmid_forced = backup_shm_rmid_forced;
+        }
+#endif /* CONFIG_MACH_OPPO */
 		/* give the system time to free up the memory */
 		msleep_interruptible(20);
 	} else
