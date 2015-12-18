@@ -354,6 +354,12 @@ config BACKLIGHT_OT200
 	  To compile this driver as a module, choose M here: the module will be
 	  called ot200_bl.
 
+config BACKLIGHT_LM3630
+	bool "Backlight driver for TI LM3630"
+	depends on I2C
+	---help---
+	  This supports TI LM3630 backlight driver.
+
 config BACKLIGHT_PANDORA
 	tristate "Backlight driver for Pandora console"
 	depends on TWL4030_CORE
