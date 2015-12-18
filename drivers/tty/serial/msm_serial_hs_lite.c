@@ -54,6 +54,10 @@
 #include <mach/msm_bus.h>
 #include <asm/mach-types.h>
 #include "msm_serial_hs_hwreg.h"
+#ifdef VENDOR_EDIT 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/12/04, Add for select console in different mode
+#include <linux/boot_mode.h>
+#endif /* VENDOR_EDIT */
 
 /*
  * There are 3 different kind of UART Core available on MSM.
@@ -1371,7 +1375,14 @@ static void dump_hsl_regs(struct uart_port *port)
 	ncf = msm_hsl_read(port, regmap[vid][UARTDM_NCF_TX]);
 	txfs = msm_hsl_read(port, regmap[vid][UARTDM_TXFS]);
 	rxfs = msm_hsl_read(port, regmap[vid][UARTDM_RXFS]);
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	con_state = get_console_state(port);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		con_state = -ENODEV;
+	else
+		con_state = get_console_state(port);
+#endif	
 
 	msm_hsl_console_state[0] = sr;
 	msm_hsl_console_state[1] = isr;
@@ -1561,7 +1572,14 @@ static ssize_t show_msm_console(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	port = get_port_from_line(get_line(pdev));
 
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	enable = get_console_state(port);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		enable = -ENODEV;
+	else
+		enable = get_console_state(port);
+#endif	
 
 	return snprintf(buf, sizeof(enable), "%d\n", enable);
 }
@@ -1582,7 +1600,14 @@ static ssize_t set_msm_console(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	port = get_port_from_line(get_line(pdev));
 
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	cur_state = get_console_state(port);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		cur_state = -ENODEV;
+	else
+		cur_state = get_console_state(port);
+#endif	
 	enable = buf[0] - '0';
 
 	if (enable == cur_state)
@@ -1633,6 +1658,16 @@ static struct uart_driver msm_hsl_uart_driver = {
 	.nr = UART_NR,
 	.cons = MSM_HSL_CONSOLE,
 };
+
+#ifndef CONFIG_OPPO_DAILY_BUILD
+static struct uart_driver msm_hsl_uart_driver_no_console = {
+	.owner = THIS_MODULE,
+	.driver_name = "msm_serial_hsl",
+	.dev_name = "ttyHSL",
+	.nr = UART_NR,
+	.cons = NULL,
+};
+#endif
 
 static struct msm_serial_hslite_platform_data
 		*msm_hsl_dt_to_pdata(struct platform_device *pdev)
@@ -1820,9 +1855,11 @@ static int __devinit msm_serial_hsl_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, port);
 	pm_runtime_enable(port->dev);
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
-	ret = device_create_file(&pdev->dev, &dev_attr_console);
-	if (unlikely(ret))
-		pr_err("Can't create console attribute\n");
+	if(get_boot_mode() != MSM_BOOT_MODE__NORMAL) {
+		ret = device_create_file(&pdev->dev, &dev_attr_console);
+		if (unlikely(ret))
+			pr_err("Can't create console attribute\n");
+	}
 #endif
 	msm_hsl_debugfs_init(msm_hsl_port, get_line(pdev));
 	mutex_init(&msm_hsl_port->clk_mutex);
@@ -1836,7 +1873,14 @@ static int __devinit msm_serial_hsl_probe(struct platform_device *pdev)
 	 */
 	if (msm_hsl_port->pclk)
 		clk_prepare_enable(msm_hsl_port->pclk);
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	ret = uart_add_one_port(&msm_hsl_uart_driver, port);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		ret = uart_add_one_port(&msm_hsl_uart_driver_no_console, port);
+	else
+		ret = uart_add_one_port(&msm_hsl_uart_driver, port);
+#endif	
 	if (msm_hsl_port->pclk)
 		clk_disable_unprepare(msm_hsl_port->pclk);
 
@@ -1853,7 +1897,8 @@ static int __devexit msm_serial_hsl_remove(struct platform_device *pdev)
 
 	port = get_port_from_line(get_line(pdev));
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
-	device_remove_file(&pdev->dev, &dev_attr_console);
+	if(get_boot_mode() != MSM_BOOT_MODE__NORMAL)
+		device_remove_file(&pdev->dev, &dev_attr_console);
 #endif
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -1864,7 +1909,14 @@ static int __devexit msm_serial_hsl_remove(struct platform_device *pdev)
 	device_set_wakeup_capable(&pdev->dev, 0);
 	platform_set_drvdata(pdev, NULL);
 	mutex_destroy(&msm_hsl_port->clk_mutex);
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	uart_remove_one_port(&msm_hsl_uart_driver, port);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		uart_remove_one_port(&msm_hsl_uart_driver_no_console, port);
+	else
+		uart_remove_one_port(&msm_hsl_uart_driver, port);
+#endif	
 
 	clk_put(msm_hsl_port->pclk);
 	clk_put(msm_hsl_port->clk);
@@ -1885,7 +1937,14 @@ static int msm_serial_hsl_suspend(struct device *dev)
 		if (is_console(port))
 			msm_hsl_deinit_clock(port);
 
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 		uart_suspend_port(&msm_hsl_uart_driver, port);
+#else
+		if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+			uart_suspend_port(&msm_hsl_uart_driver_no_console, port);
+		else
+			uart_suspend_port(&msm_hsl_uart_driver, port);
+#endif		
 		if (device_may_wakeup(dev))
 			enable_irq_wake(port->irq);
 	}
@@ -1900,8 +1959,14 @@ static int msm_serial_hsl_resume(struct device *dev)
 	port = get_port_from_line(get_line(pdev));
 
 	if (port) {
-
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 		uart_resume_port(&msm_hsl_uart_driver, port);
+#else
+		if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+			uart_resume_port(&msm_hsl_uart_driver_no_console, port);
+		else
+			uart_resume_port(&msm_hsl_uart_driver, port);
+#endif		
 		if (device_may_wakeup(dev))
 			disable_irq_wake(port->irq);
 
@@ -1959,8 +2024,14 @@ static struct platform_driver msm_hsl_platform_driver = {
 static int __init msm_serial_hsl_init(void)
 {
 	int ret;
-
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	ret = uart_register_driver(&msm_hsl_uart_driver);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		ret = uart_register_driver(&msm_hsl_uart_driver_no_console);
+	else
+		ret = uart_register_driver(&msm_hsl_uart_driver);
+#endif	
 	if (unlikely(ret))
 		return ret;
 
@@ -1969,8 +2040,16 @@ static int __init msm_serial_hsl_init(void)
 		pr_err("Cannot create debugfs dir\n");
 
 	ret = platform_driver_register(&msm_hsl_platform_driver);
-	if (unlikely(ret))
-		uart_unregister_driver(&msm_hsl_uart_driver);
+	if (unlikely(ret)){
+#if defined(CONFIG_OPPO_DAILY_BUILD)
+	uart_unregister_driver(&msm_hsl_uart_driver);
+#else
+		if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+			uart_unregister_driver(&msm_hsl_uart_driver_no_console);
+		else
+			uart_unregister_driver(&msm_hsl_uart_driver);
+#endif		
+	}
 
 	pr_info("driver initialized\n");
 
@@ -1981,10 +2060,18 @@ static void __exit msm_serial_hsl_exit(void)
 {
 	debugfs_remove_recursive(debug_base);
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
-	unregister_console(&msm_hsl_console);
+	if(get_boot_mode() != MSM_BOOT_MODE__NORMAL)
+		unregister_console(&msm_hsl_console);
 #endif
 	platform_driver_unregister(&msm_hsl_platform_driver);
+#if defined(CONFIG_OPPO_DAILY_BUILD)
 	uart_unregister_driver(&msm_hsl_uart_driver);
+#else
+	if(get_boot_mode() == MSM_BOOT_MODE__NORMAL)
+		uart_unregister_driver(&msm_hsl_uart_driver_no_console);
+	else
+		uart_unregister_driver(&msm_hsl_uart_driver);
+#endif	
 }
 
 module_init(msm_serial_hsl_init);

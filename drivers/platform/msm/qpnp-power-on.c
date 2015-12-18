@@ -373,6 +373,27 @@ int qpnp_pon_trigger_config(enum pon_trigger_source pon_src, bool enable)
 }
 EXPORT_SYMBOL(qpnp_pon_trigger_config);
 
+#ifdef VENDOR_EDIT
+//rendong.shi@BasicDrv.bootloader, 2015/03/12, add for silence hardrest
+int qpnp_silence_write(u16 addr, u8 val)
+{
+	int rc;
+	u8 reg;
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	reg = val;
+
+	rc = spmi_ext_register_writel(pon->spmi->ctrl, pon->spmi->sid,
+											addr, &reg, 1);
+	if (rc)
+		dev_err(&pon->spmi->dev,
+						"Unable to write to addr=%x, rc(%d)\n", addr, rc);
+	return rc;
+}
+EXPORT_SYMBOL(qpnp_silence_write);
+#endif
+
+
 static struct qpnp_pon_config *
 qpnp_get_cfg(struct qpnp_pon *pon, u32 pon_type)
 {

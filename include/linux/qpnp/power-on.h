@@ -70,4 +70,12 @@ int qpnp_pon_wd_config(bool enable)
 }
 #endif
 
+#ifdef VENDOR_EDIT
+//rendong.shi@Basic.boot ,2015/03/12, add for silence mod
+
+int qpnp_silence_write(u16 addr, u8 val);
+
+#endif
+
+
 #endif

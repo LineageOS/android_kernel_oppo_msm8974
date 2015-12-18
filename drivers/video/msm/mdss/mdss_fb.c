@@ -53,7 +53,25 @@
 #include <mach/msm_memtypes.h>
 
 #include "mdss_fb.h"
+#include "mdss_dsi.h"
 #include "mdss_mdp_splash_logo.h"
+#include <linux/pcb_version.h>
+#ifdef VENDOR_EDIT
+/* OPPO 2015-05-22 Goushengjun Add begin for close BL when utomatic reboot*/
+extern unsigned int get_lcd_closebl_flag(void);
+extern int lcd_closebl_flag;
+#endif
+/* OPPO 2015-05-22 Goushengjun Add end */ 
+
+#ifdef VENDOR_EDIT
+/* liuyan@Onlinerd.driver, 2014/10/24  Add for erase power by android one time */
+#include <linux/memblock.h>
+#include <linux/boot_mode.h>
+static int erase_count=1;
+#define LOGO_ADDR 0x03200000
+#define LOGO_MDP_BASE   0xc5dc0600
+struct task_struct	*erase_thread;
+#endif /*CONFIG_VENDOR_EDIT*/
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -302,6 +320,8 @@ static void mdss_fb_parse_dt(struct msm_fb_data_type *mfd)
 	u32 panel_xres;
 	struct platform_device *pdev = mfd->pdev;
 
+#ifndef CONFIG_VENDOR_EDIT
+/* Xinqin.Yang@PhoneSW.Driver, 2014/02/10  Modify for Find7S */
 	of_property_read_u32_array(pdev->dev.of_node,
 		"qcom,mdss-fb-split", data, 2);
 
@@ -320,6 +340,47 @@ static void mdss_fb_parse_dt(struct msm_fb_data_type *mfd)
 		else
 			mfd->split_fb_left = mfd->split_fb_right = 0;
 	}
+#else
+       if ((get_pcb_version() < HW_VERSION__20)||(get_pcb_version() >= HW_VERSION__30)) { /* Find7 ,liuyan add 30 for N3*/
+	    of_property_read_u32_array(pdev->dev.of_node,
+		    "qcom,mdss-fb-split", data, 2);
+
+	    panel_xres = mfd->panel_info->xres;
+	    if (data[0] && data[1]) {
+		    if (mfd->split_display)
+			    panel_xres *= 2;
+
+		    if (panel_xres == data[0] + data[1]) {
+			    mfd->split_fb_left = data[0];
+			    mfd->split_fb_right = data[1];
+		    }
+	     } else {
+		    if (mfd->split_display)
+			    mfd->split_fb_left = mfd->split_fb_right = panel_xres;
+		    else
+			    mfd->split_fb_left = mfd->split_fb_right = 0;
+	     }
+          }else{
+	    of_property_read_u32_array(pdev->dev.of_node,
+		    "qcom,mdss-fb-split-find7s", data, 2);
+
+	    panel_xres = mfd->panel_info->xres;
+	    if (data[0] && data[1]) {
+		    if (mfd->split_display)
+			    panel_xres *= 2;
+
+		    if (panel_xres == data[0] + data[1]) {
+			    mfd->split_fb_left = data[0];
+			    mfd->split_fb_right = data[1];
+		    }
+	     } else {
+		    if (mfd->split_display)
+			    mfd->split_fb_left = mfd->split_fb_right = panel_xres;
+		    else
+			    mfd->split_fb_left = mfd->split_fb_right = 0;
+	     }
+	   }
+#endif
 	pr_info("split framebuffer left=%d right=%d\n",
 		mfd->split_fb_left, mfd->split_fb_right);
 }
@@ -348,6 +409,8 @@ static ssize_t mdss_mdp_show_blank_event(struct device *dev,
 
 	return ret;
 }
+
+
 
 static void __mdss_fb_idle_notify_work(struct work_struct *work)
 {
@@ -404,6 +467,113 @@ static ssize_t mdss_fb_get_idle_notify(struct device *dev,
 
 	return ret;
 }
+
+//////////////////////////////////////////////
+
+
+/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef VENDOR_EDIT
+
+extern struct mdss_dsi_ctrl_pdata *panel_data;
+static ssize_t mdss_mdp_lcdoff_event(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if((get_pcb_version() >= HW_VERSION__20)&&(get_pcb_version() < HW_VERSION__30)){/*liuyan add 30 for N3*/
+		struct mdss_panel_data * pdata;
+		int rc;
+		pr_err("find7s yxr\n");
+		pdata = &panel_data->panel_data;
+		do {
+			pr_err("pdata = %x yxr\n",(u32)pdata);
+			if (pdata->event_handler)
+				rc = pdata->event_handler(pdata, MDSS_EVENT_PANEL_OFF, NULL);
+			pdata = pdata->next;
+		} while (rc == 0 && pdata);
+		return rc;
+	}else{
+		struct fb_info *fbi = dev_get_drvdata(dev);
+    	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+  	    pr_err("%s YXQ mfd=0x%p\n", __func__, mfd);
+		if (!mfd)
+			return -ENODEV;
+		return mdss_fb_send_panel_event(mfd, MDSS_EVENT_PANEL_OFF, NULL);
+	}
+}
+#endif
+/* OPPO 2013-11-26 yxq Add end */
+
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/12  Add for gamma correction */
+extern int set_gamma(int index);
+
+extern int gamma_index;
+extern void send_user_defined_gamma(char * buf);
+
+static ssize_t mdss_set_gamma(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+{
+    int index = 0;
+	char a[100];
+    sscanf(buf, "%du", &index);
+	pr_err("strlen = %d \n",strlen(buf));
+	if(strlen(buf)<=2){
+    set_gamma(index);
+	gamma_index = index;
+	}
+	else{
+		strcpy(a,buf);
+		pr_err("%s \n",a);
+		if((get_pcb_version() < 20)||(get_pcb_version() >=30))/*liuyan add for N3*/
+		send_user_defined_gamma(a);
+	}
+    return count;
+}
+
+static ssize_t mdss_get_gamma(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	printk(KERN_INFO "get fix resume gamma index = %d\n",gamma_index);
+
+    return sprintf(buf, "%d\n", gamma_index);
+}
+
+
+#endif /*VENDOR_EDIT*/
+
+
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/17  Add for set cabc */
+extern int set_cabc(int level);
+extern int cabc_mode;
+
+static ssize_t mdss_get_cabc(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	printk(KERN_INFO "get cabc mode = %d\n",cabc_mode);
+
+    return sprintf(buf, "%d\n", cabc_mode);
+}
+
+static ssize_t mdss_set_cabc(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+{
+    int level = 0;
+    sscanf(buf, "%du", &level);
+    set_cabc(level);
+    return count;
+}
+
+#endif /*VENDOR_EDIT*/
+
+
+
+
+/////////////////////////////////////////////
+
+
+
 
 static ssize_t mdss_fb_get_panel_info(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -509,13 +679,56 @@ static int mdss_fb_lpm_enable(struct msm_fb_data_type *mfd, int mode)
 	return 0;
 }
 
+#ifdef VENDOR_EDIT
+/* Goushengjun,2015-5-21 add for close BL when utomatic reboot  */
+static ssize_t mdss_get_closebl_flag(struct device *dev,	
+    							struct device_attribute *attr, char *buf)
+{	
+    printk(KERN_INFO "get closebl flag = %d\n",get_lcd_closebl_flag());
+    return sprintf(buf, "%d\n", get_lcd_closebl_flag());
+}	
+
+static ssize_t mdss_set_closebl_flag(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+{	
+	int closebl = 0;
+	sscanf(buf, "%du", &closebl);
+	printk(KERN_INFO "lcd_closebl_flag = %d\n",closebl);
+	if(1 != closebl)
+		lcd_closebl_flag = 0;
+	printk(KERN_INFO "mdss_set_closebl_flag = %d\n",get_lcd_closebl_flag());
+    return count;
+}	
+#endif
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
 static DEVICE_ATTR(show_blank_event, S_IRUGO, mdss_mdp_show_blank_event, NULL);
+/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef VENDOR_EDIT
+static DEVICE_ATTR(lcdoff, S_IRUGO, mdss_mdp_lcdoff_event, NULL);
+#endif
+/* OPPO 2013-11-26 yxq Add end */
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/17  Add for set cabc */ 
+static DEVICE_ATTR(cabc, S_IRUGO|S_IWUSR, mdss_get_cabc, mdss_set_cabc);
+#endif /*VENDOR_EDIT*/
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/12  Add for gamma correction */
+static DEVICE_ATTR(gamma, S_IRUGO|S_IWUSR, mdss_get_gamma, mdss_set_gamma);
+#endif /*VENDOR_EDIT*/
 static DEVICE_ATTR(idle_time, S_IRUGO | S_IWUSR | S_IWGRP,
 	mdss_fb_get_idle_time, mdss_fb_set_idle_time);
 static DEVICE_ATTR(idle_notify, S_IRUGO, mdss_fb_get_idle_notify, NULL);
 static DEVICE_ATTR(msm_fb_panel_info, S_IRUGO, mdss_fb_get_panel_info, NULL);
+
+#ifdef VENDOR_EDIT
+/* Goushengjun,2015-5-21 add for close BL when utomatic reboot        *  
+ * Node: /sys/class/graphics/fb0/closebl                           *
+ */
+static DEVICE_ATTR(closebl, 0664, mdss_get_closebl_flag, mdss_set_closebl_flag);
+#endif
 
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
@@ -524,6 +737,25 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_idle_time.attr,
 	&dev_attr_idle_notify.attr,
 	&dev_attr_msm_fb_panel_info.attr,
+	
+	/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef VENDOR_EDIT
+		&dev_attr_lcdoff.attr,
+#endif
+	/* OPPO 2013-11-26 yxq Add end */
+#ifdef VENDOR_EDIT
+	/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/17  Add for set cabc */
+		&dev_attr_cabc.attr,
+#endif /*VENDOR_EDIT*/
+	
+#ifdef VENDOR_EDIT
+	/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/12  Add for gamma correction */
+		&dev_attr_gamma.attr,
+#endif /*VENDOR_EDIT*/
+#ifdef VENDOR_EDIT	
+/* Goushengjun,2015-5-21 add for close BL when utomatic reboot  */
+	&dev_attr_closebl.attr,
+#endif
 	NULL,
 };
 
@@ -549,12 +781,60 @@ static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
 static void mdss_fb_shutdown(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
-
+#ifdef VENDOR_EDIT
+/* liuyan@Onlinerd.driver, 2014/09/26  Add for truly panle will flash before panel off,should close back light */
+       if((get_pcb_version() < HW_VERSION__20)||
+	   ((get_pcb_version() >= HW_VERSION__30)&&
+	   (get_pcb_version() < HW_VERSION__40))){
+                mdss_fb_set_backlight(mfd,0);
+       }
+#endif /*CONFIG_VENDOR_EDIT*/
 	mfd->shutdown_pending = true;
 	lock_fb_info(mfd->fbi);
 	mdss_fb_release_all(mfd->fbi, true);
 	unlock_fb_info(mfd->fbi);
 }
+#ifdef VENDOR_EDIT
+/* liuyan@Onlinerd.driver, 2015/04/09  Add for erase power by android */
+static int mdss_erase_thread(void *data)
+{
+
+	struct device_node *chosen_node;
+	static const char *cmd_line;
+	char *disp_idx;
+	int cmd_len,len=0;
+	msleep(1000);
+    if ((MSM_BOOT_MODE__NORMAL == get_boot_mode()) ||
+        (MSM_BOOT_MODE__RECOVERY == get_boot_mode())) {
+      	        if((get_pcb_version() < HW_VERSION__20)||((get_pcb_version() >= HW_VERSION__30))){
+      	        memset(phys_to_virt(LOGO_ADDR + 1620*1080*3), 0x00,300*1080*3);
+		 memset(phys_to_virt(LOGO_ADDR + 1920*1080*3), 0x00,1920*1080*3);
+      	        writel_relaxed(1, (char *)(LOGO_MDP_BASE+0x1c));
+      	        }
+      	        if((get_pcb_version() >= HW_VERSION__20)&&((get_pcb_version() < HW_VERSION__30))){
+      	        memset(phys_to_virt(LOGO_ADDR + 2000*1440*3), 0x00, 560*1440*3);
+		 memset(phys_to_virt(LOGO_ADDR + 2000*1440*3), 0x00, 560*1440*3);
+		 chosen_node = of_find_node_by_name(NULL, "chosen");
+	       if (!chosen_node) {
+		      pr_err("%s: get chosen node failed\n", __func__);
+	       }
+
+	       cmd_line = of_get_property(chosen_node, "bootargs", &len);
+	       if (!cmd_line) {
+		pr_err("%s: get bootargs failed\n", __func__);
+	       }
+
+	      cmd_len = strlen(cmd_line);
+	      disp_idx = strnstr(cmd_line, "qcom,dsi_rsp_1440p_cmd", cmd_len);
+             pr_debug("%s:%s\n",__func__,disp_idx);
+	      if(disp_idx)
+      	        writel_relaxed(1, (char *)(LOGO_MDP_BASE+0x1c));
+      	      }
+    }
+	pr_err("%s:erase power by android\n",__func__);
+	return 0;
+}
+#endif /*CONFIG_VENDOR_EDIT*/
 
 static int mdss_fb_probe(struct platform_device *pdev)
 {
@@ -661,7 +941,14 @@ static int mdss_fb_probe(struct platform_device *pdev)
 		mfd->mdp.splash_init_fnc(mfd);
 
 	INIT_DELAYED_WORK(&mfd->idle_notify_work, __mdss_fb_idle_notify_work);
-
+#ifdef VENDOR_EDIT
+/* liuyan@Onlinerd.driver, 2015/04/09  Add for erase power by android */
+      if(erase_count){
+          erase_thread = kthread_run(mdss_erase_thread,
+							mfd, "mdss_fb_erase");
+	  erase_count--;
+      }
+#endif /*CONFIG_VENDOR_EDIT*/
 	return rc;
 }
 
@@ -1488,8 +1775,14 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	var->grayscale = 0,	/* No graylevels */
 	var->nonstd = 0,	/* standard pixel format */
 	var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
+#ifndef VENDOR_EDIT
+/* Xinqin.Yang@PhoneSW.Driver, 2013/12/23  Modify for panel's real size */
 	var->height = -1,	/* height of picture in mm */
 	var->width = -1,	/* width of picture in mm */
+#else /*VENDOR_EDIT*/
+	var->height = 121,	/* height of picture in mm */
+	var->width = 68,	/* width of picture in mm */
+#endif /*VENDOR_EDIT*/
 	var->accel_flags = 0,	/* acceleration flags */
 	var->sync = 0,	/* see FB_SYNC_* */
 	var->rotate = 0,	/* angle we rotate counter clockwise */
