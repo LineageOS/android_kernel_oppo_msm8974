@@ -74,16 +74,67 @@ static int __devinit ram_console_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_MACH_OPPO /*schedule ramconsole initailize on cpu 2 by huruihuan*/
+struct ram_console_optimize_data{
+	struct work_struct work;
+	struct platform_device *pdev;
+};
+static struct ram_console_optimize_data optimize_data;
+
+static void __devinit optimize_ramconsole_oppo_func(struct work_struct *work)
+{
+	struct platform_device *ramconsole_dev = optimize_data.pdev;
+	ram_console_probe(ramconsole_dev);
+}
+static int __devinit ram_console_probe_oppo(struct platform_device *pdev)
+{
+	INIT_WORK(&(optimize_data.work), optimize_ramconsole_oppo_func);
+	optimize_data.pdev = pdev;
+	schedule_work_on(2,&(optimize_data.work));
+	return 0;
+}
+#endif
+
 static struct platform_driver ram_console_driver = {
 	.driver		= {
 		.name	= "ram_console",
 	},
+#ifdef CONFIG_MACH_OPPO /*schedule ramconsole initailize on cpu 2 by huruihuan*/
+	.probe = ram_console_probe_oppo,
+#else
 	.probe = ram_console_probe,
+#endif
 };
+
+#ifdef CONFIG_MACH_OPPO
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/03, Add for ram_console device
+static struct platform_device *ram_console_dev;
+#endif
 
 static int __init ram_console_module_init(void)
 {
+#ifndef CONFIG_MACH_OPPO
+//Zhilong.Zhang@OnlineRd.Driver, 2013/12/03, Add for ram_console device
 	return platform_driver_register(&ram_console_driver);
+#else  /* CONFIG_MACH_OPPO */
+	int ret;
+
+	ram_console_dev = platform_device_alloc("ram_console", -1);
+	if (!ram_console_dev)
+		return -ENOMEM;
+
+	ret = platform_device_add(ram_console_dev);
+	if (ret != 0) {
+		platform_device_put(ram_console_dev);
+		return ret;
+	}
+
+	ret = platform_driver_register(&ram_console_driver);
+	if (ret != 0)
+		platform_device_unregister(ram_console_dev);
+
+	return ret;
+#endif  /* CONFIG_MACH_OPPO */
 }
 
 #ifndef CONFIG_PRINTK
@@ -101,8 +152,11 @@ static ssize_t ram_console_read_old(struct file *file, char __user *buf,
 	char *str;
 	int ret;
 
+#ifndef CONFIG_MACH_OPPO
+//Zhilong.Zhang@OnlineRd.Driver, 2014/01/16, Delete for solve the problem that can not read /proc/last_kmsg right.
 	if (dmesg_restrict && !capable(CAP_SYSLOG))
 		return -EPERM;
+#endif  /* CONFIG_MACH_OPPO */
 
 	/* Main last_kmsg log */
 	if (pos < old_log_size) {
