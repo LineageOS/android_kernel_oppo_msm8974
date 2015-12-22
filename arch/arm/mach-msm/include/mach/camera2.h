@@ -11,7 +11,9 @@
  *
  */
 
-#ifdef CONFIG_OPPO_CAMERA_51
+#ifdef CONFIG_OPPO_CAMERA_50
+#include <mach/camera2_oppo_50.h>
+#elif defined(CONFIG_OPPO_CAMERA_51)
 #include <mach/camera2_oppo_51.h>
 #else
 
