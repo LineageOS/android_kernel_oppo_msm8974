@@ -42,6 +42,11 @@ choice
 config MSMB_CAMERA_DEFAULT
 	bool "Default Qualcomm camera stack"
 
+config OPPO_CAMERA_50
+	bool "OPPO's 5.0 variant of the camera stack"
+	---help---
+	  Enable the old 5.0 OPPO camera code
+
 config OPPO_CAMERA_51
 	bool "OPPO's 5.1 variant of the camera stack"
 	---help---
@@ -52,6 +57,9 @@ endchoice
 if MSMB_CAMERA
 if MSMB_CAMERA_DEFAULT
 source "drivers/media/platform/msm/camera_v2/Kconfig"
+endif
+if OPPO_CAMERA_50
+source "drivers/media/platform/msm/camera_oppo_50_v2/Kconfig"
 endif
 if OPPO_CAMERA_51
 source "drivers/media/platform/msm/camera_oppo_51_v2/Kconfig"
