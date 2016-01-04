@@ -2217,7 +2217,7 @@ CONFIG_MSM_ISPIF=y
 # CONFIG_IMX134 is not set
 # CONFIG_OV9724 is not set
 # CONFIG_HI256 is not set
-CONFIG_OV5648=y
+# CONFIG_OV5648 is not set
 # CONFIG_MT9M114 is not set
 # CONFIG_SP1628 is not set
 # CONFIG_GC0339 is not set
