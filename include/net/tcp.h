@@ -254,6 +254,7 @@ extern int sysctl_tcp_max_ssthresh;
 extern int sysctl_tcp_cookie_size;
 extern int sysctl_tcp_thin_linear_timeouts;
 extern int sysctl_tcp_thin_dupack;
+extern int sysctl_tcp_challenge_ack_limit;
 extern int sysctl_tcp_default_init_rwnd;
 
 /* sysctl variables for controlling various tcp parameters */
@@ -958,6 +959,7 @@ static inline int tcp_prequeue(struct sock *sk, struct sk_buff *skb)
 	if (sysctl_tcp_low_latency || !tp->ucopy.task)
 		return 0;
 
+	skb_dst_force(skb);
 	__skb_queue_tail(&tp->ucopy.prequeue, skb);
 	tp->ucopy.memory += skb->truesize;
 	if (tp->ucopy.memory > sk->sk_rcvbuf) {
@@ -996,6 +998,8 @@ static const char *statename[]={
 extern void tcp_set_state(struct sock *sk, int state);
 
 extern void tcp_done(struct sock *sk);
+
+int tcp_abort(struct sock *sk, int err);
 
 static inline void tcp_sack_reset(struct tcp_options_received *rx_opt)
 {

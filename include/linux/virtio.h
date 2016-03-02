@@ -89,6 +89,8 @@ struct virtqueue_ops {
 	void (*kick_notify)(struct virtqueue *vq);
 	void *(*get_buf)(struct virtqueue *vq, unsigned int *len);
 	void (*disable_cb)(struct virtqueue *vq);
+	unsigned (*enable_cb_prepare)(struct virtqueue *vq);
+	bool (*poll)(struct virtqueue *vq, unsigned last_used_idx);
 	bool (*enable_cb)(struct virtqueue *vq);
 	bool (*enable_cb_delayed)(struct virtqueue *vq);
 	void *(*detach_unused_buf)(struct virtqueue *vq);
@@ -194,6 +196,37 @@ static inline void virtqueue_disable_cb(struct virtqueue *vq)
 }
 
 /**
+ * virtqueue_enable_cb_prepare - restart callbacks after disable_cb.
+ * @vq: the struct virtqueue we're talking about.
+ *
+ * This re-enables callbacks; it returns current queue state
+ * in an opaque unsigned value. This value should be later tested by
+ * virtqueue_poll, to detect a possible race between the driver checking for
+ * more work, and enabling callbacks.
+ *
+ * Caller must ensure we don't call this with other virtqueue
+ * operations at the same time (except where noted).
+ */
+static inline unsigned virtqueue_enable_cb_prepare(struct virtqueue *vq)
+{
+	return vq->vq_ops->enable_cb_prepare(vq);
+}
+
+/**
+ * virtqueue_poll - query pending used buffers
+ * @vq: the struct virtqueue we're talking about.
+ * @last_used_idx: virtqueue state (from call to virtqueue_enable_cb_prepare).
+ *
+ * Returns "true" if there are pending used buffers in the queue.
+ *
+ * This does not need to be serialized.
+ */
+static inline bool virtqueue_poll(struct virtqueue *vq, unsigned last_used_idx)
+{
+	return vq->vq_ops->poll(vq, last_used_idx);
+}
+
+/**
  * virtqueue_enable_cb - restart callbacks after disable_cb.
  * @vq: the struct virtqueue we're talking about.
  *
@@ -226,7 +259,6 @@ static inline bool virtqueue_enable_cb_delayed(struct virtqueue *vq)
 {
 	return vq->vq_ops->enable_cb_delayed(vq);
 }
-
 /**
  * virtqueue_detach_unused_buf - detach first unused buffer
  * @vq: the struct virtqueue we're talking about.
