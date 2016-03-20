@@ -1,0 +1,26 @@
+config MACH_OPPO
+	bool
+	depends on ARCH_MSM
+
+config MACH_OPPO_MSM8974
+	depends on ARCH_MSM8974
+	select MACH_OPPO
+	bool "Oppo MSM8974 Platform"
+	help
+	  Support for OPPO MSM8974 device variants.
+
+menu "OPPO board selection"
+
+config MACH_FIND7
+	select MACH_OPPO_MSM8974
+	bool "OPPO Find7"
+	help
+	  Support for the OPPO Find7A/Find7S
+
+config MACH_N3
+	select MACH_OPPO_MSM8974
+	bool "OPPO N3"
+	help
+	  Support for the OPPO N3
+
+endmenu
