@@ -548,16 +548,31 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		power_supply_type = POWER_SUPPLY_TYPE_USB;
 	else if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB_CDP;
+#ifdef CONFIG_MACH_OPPO
+	else if (dotg->charger->chg_type == DWC3_DCP_CHARGER ||
+			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER ||
+			dotg->charger->chg_type == DWC3_FLOATED_CHARGER)
+#else
 	else if (dotg->charger->chg_type == DWC3_DCP_CHARGER ||
 			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER)
+#endif
 		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
 	else
+#ifdef CONFIG_MACH_OPPO
+		power_supply_type = POWER_SUPPLY_TYPE_BATTERY;
+#else
 		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
+#endif
 
 	power_supply_set_supply_type(dotg->psy, power_supply_type);
 
 	if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
+
+#ifdef CONFIG_MACH_OPPO
+	if (dotg->charger->chg_type == DWC3_FLOATED_CHARGER)
+		mA = DWC3_IDEV_CHG_FLOATED;
+#endif
 
 	if (dotg->charger->max_power == mA)
 		return 0;
@@ -568,12 +583,23 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		/* Enable charging */
 		if (power_supply_set_online(dotg->psy, true))
 			goto psy_error;
+#ifdef CONFIG_MACH_OPPO
+		if (power_supply_type != POWER_SUPPLY_TYPE_USB) {
+			power_supply_set_online(dotg->psy, false);
+		}
+#endif
 		if (power_supply_set_current_limit(dotg->psy, 1000*mA))
 			goto psy_error;
 	} else if (dotg->charger->max_power > 0 && (mA == 0 || mA == 2)) {
+#ifdef CONFIG_MACH_OPPO
+		if (power_supply_type != POWER_SUPPLY_TYPE_USB &&
+				power_supply_set_online(dotg->psy, false))
+			goto psy_error;
+#else
 		/* Disable charging */
 		if (power_supply_set_online(dotg->psy, false))
 			goto psy_error;
+#endif
 		/* Set max current limit */
 		if (power_supply_set_current_limit(dotg->psy, 0))
 			goto psy_error;
@@ -693,6 +719,17 @@ void dwc3_otg_init_sm(struct dwc3_otg *dotg)
 	}
 }
 
+#ifdef CONFIG_MACH_OPPO
+static void dwc3_otg_detect_work(struct work_struct *w)
+{
+	struct dwc3_otg *dotg = container_of(w, struct dwc3_otg,
+			detect_work.work);
+	struct dwc3_charger *charger = dotg->charger;
+
+	charger->start_detection(charger, true);
+}
+#endif
+
 /**
  * dwc3_otg_sm_work - workqueue function.
  *
@@ -780,8 +817,20 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 									1);
 					phy->state = OTG_STATE_B_PERIPHERAL;
 					work = 1;
+#ifdef CONFIG_MACH_OPPO
+					power_supply_set_online(dotg->psy, true);
+					dwc3_otg_set_power(phy,
+							CONFIG_USB_GADGET_VBUS_DRAW);
+					power_supply_changed(dotg->psy);
+#endif
 					break;
 				case DWC3_FLOATED_CHARGER:
+#ifdef CONFIG_MACH_OPPO
+					dwc3_otg_set_power(phy,
+							DWC3_IDEV_CHG_FLOATED);
+					pm_runtime_put_sync(phy->dev);
+					break;
+#else
 					if (dotg->charger_retry_count <
 							max_chgr_retry_count)
 						dotg->charger_retry_count++;
@@ -802,10 +851,25 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					}
 					charger->start_detection(dotg->charger,
 									false);
+#endif
 
 				default:
 					dev_dbg(phy->dev, "chg_det started\n");
+#ifdef CONFIG_MACH_OPPO
+					cancel_delayed_work_sync(&dotg->detect_work);
+
+					if (charger)
+						charger->start_detection(dotg->charger, false);
+
+					dotg->charger_retry_count = 0;
+					dwc3_otg_set_power(phy, 0);
+
+					queue_delayed_work(system_nrt_wq,
+							&dotg->detect_work,
+							msecs_to_jiffies(600));
+#else
 					charger->start_detection(charger, true);
+#endif
 					break;
 				}
 			} else {
@@ -824,6 +888,9 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				}
 			}
 		} else {
+#ifdef CONFIG_MACH_OPPO
+			cancel_delayed_work_sync(&dotg->detect_work);
+#endif
 			if (charger)
 				charger->start_detection(dotg->charger, false);
 
@@ -1023,6 +1090,9 @@ int dwc3_otg_init(struct dwc3 *dwc)
 
 	init_completion(&dotg->dwc3_xcvr_vbus_init);
 	INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
+#ifdef CONFIG_MACH_OPPO
+	INIT_DELAYED_WORK(&dotg->detect_work, dwc3_otg_detect_work);
+#endif
 
 	ret = request_irq(dotg->irq, dwc3_otg_interrupt, IRQF_SHARED,
 				"dwc3_otg", dotg);
@@ -1037,6 +1107,9 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	return 0;
 
 err3:
+#ifdef CONFIG_MACH_OPPO
+	cancel_delayed_work_sync(&dotg->detect_work);
+#endif
 	cancel_delayed_work_sync(&dotg->sm_work);
 	usb_set_transceiver(NULL);
 err2:
@@ -1062,6 +1135,9 @@ void dwc3_otg_exit(struct dwc3 *dwc)
 	if (dotg) {
 		if (dotg->charger)
 			dotg->charger->start_detection(dotg->charger, false);
+#ifdef CONFIG_MACH_OPPO
+		cancel_delayed_work_sync(&dotg->detect_work);
+#endif
 		cancel_delayed_work_sync(&dotg->sm_work);
 		usb_set_transceiver(NULL);
 		pm_runtime_put(dwc->dev);
