@@ -145,6 +145,8 @@ enum {
 	MMC_PACKED_N_SINGLE,
 };
 
+unsigned int		mmc_mid;//added by songxh
+
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
 
