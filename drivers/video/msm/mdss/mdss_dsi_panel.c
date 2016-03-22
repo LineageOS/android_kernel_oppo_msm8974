@@ -22,7 +22,24 @@
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
 
+#include <linux/platform_data/lm3630_bl.h>
+
+#ifdef CONFIG_MACH_OPPO
+/* OPPO 2013-12-09 yxq Add begin for disable continous display for ftm, rf, wlan mode */
+#include <linux/boot_mode.h>
+/* OPPO 2013-12-09 yxq Add end */
+/* OPPO 2014-02-11 yxq add begin for Find7s */
+#include <linux/pcb_version.h>
+/* OPPO 2014-02-11 yxq add end */
+#endif
+#ifdef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/24  Add for ESD test */
+#include <linux/switch.h>
+#endif 
+
 #include "mdss_dsi.h"
+
+extern  int lm3630_bank_a_update_status(u32 bl_level);
 
 #define DT_CMD_HDR 6
 
@@ -38,6 +55,100 @@ void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 				__func__, ctrl->pwm_lpg_chan);
 	}
 }
+
+
+#define LCD_TE_GPIO  28
+DEFINE_SPINLOCK(te_count_lock);
+DEFINE_SPINLOCK(te_state_lock);
+
+unsigned long flags;
+static bool first_run_init=1;
+static bool first_run_reset=1;
+static bool cont_splash_flag;
+static int te_count = 0;
+static int irq_state = 1;
+static int irq;
+static int te_state = 0;
+static struct switch_dev display_switch;
+static struct delayed_work techeck_work;
+static bool find7s_lcd_rsp_ic = 0;
+extern int LCD_id;
+struct mdss_dsi_ctrl_pdata *panel_data;
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/12/29  Add for esd check */
+#define TEDETECT_TIMEOUT msecs_to_jiffies(500)
+static wait_queue_head_t te_waitq;
+#endif /*CONFIG_MACH_OPPO*/
+
+
+static irqreturn_t TE_irq_thread_fn(int irq, void *dev_id)
+{	   
+	spin_lock_irqsave(&te_count_lock, flags);   
+	te_count ++;
+	wake_up_all(&te_waitq);
+	spin_unlock_irqrestore(&te_count_lock, flags);
+	//printk("%s:+\n",__func__);
+	return IRQ_HANDLED;
+}
+static int operate_display_switch(void)
+{
+    int ret = 0;
+    printk("%s:state=%d.\n", __func__, te_state);
+
+    spin_lock_irqsave(&te_state_lock, flags);
+    if(te_state)
+        te_state = 0;
+    else
+        te_state = 1;
+    spin_unlock_irqrestore(&te_state_lock, flags);
+
+    switch_set_state(&display_switch, te_state);
+    return ret;
+}
+
+static void techeck_work_func( struct work_struct *work )
+{
+	int rc;
+	enable_irq(irq);
+	rc = wait_event_timeout(te_waitq,
+		te_count > 0,
+		TEDETECT_TIMEOUT);
+	disable_irq(irq);
+   if(rc <= 0)
+	{
+    	pr_err("yxr: te_count<50 %s\n",__func__);
+        printk("yxr------%s: lcd resetting ! te_count = %d \n",__func__,te_count);
+        printk("irq_state=%d\n", irq_state);
+        operate_display_switch();
+        spin_lock_irqsave(&te_count_lock, flags);
+        te_count = 0;
+        spin_unlock_irqrestore(&te_count_lock, flags);
+        schedule_delayed_work(&techeck_work, msecs_to_jiffies(2000));
+        return ;
+    }	
+	pr_debug("yxr %s:te_count=%d\n",__func__,te_count);    
+	spin_lock_irqsave(&te_count_lock, flags);    
+	te_count = 0;    
+	spin_unlock_irqrestore(&te_count_lock, flags);    
+	schedule_delayed_work(&techeck_work, msecs_to_jiffies(2000));
+
+}
+
+
+static ssize_t attr_mdss_dispswitch(struct device *dev,
+                                     struct device_attribute *attr, char *buf)
+{
+    printk("ESD function test--------\n");
+    operate_display_switch();
+    return 0;
+}
+
+static struct class * mdss_lcd;
+static struct device * dev_lcd;
+static struct device_attribute mdss_lcd_attrs[] = {			
+	__ATTR(dispswitch, S_IRUGO|S_IWUSR, attr_mdss_dispswitch, NULL),	
+	__ATTR_NULL,		
+	};
 
 static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
@@ -169,6 +280,8 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
+#ifndef CONFIG_MACH_OPPO
+/* Xinqin.Yang@PhoneSW.Driver, 2014/01/10  Modify for rewrite reset function */
 static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	int rc = 0;
@@ -277,6 +390,155 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	}
 	return rc;
 }
+#else
+int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+       struct mdss_panel_info *pinfo = NULL;
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return 0;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	if (!gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
+		pr_debug("%s:%d, reset line not configured\n",
+			   __func__, __LINE__);
+	}
+
+	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
+		pr_debug("%s:%d, reset line not configured\n",
+			   __func__, __LINE__);
+		return 0;
+	}
+    	pinfo = &(ctrl_pdata->panel_data.panel_info);
+    pr_err("%s: disp_en_gpio = %d ,gpio76 = %d,rst_gpio=%d ,and pannel index=%d enable=%d\n", __func__, \
+		ctrl_pdata->disp_en_gpio,ctrl_pdata->disp_en_gpio76,ctrl_pdata->rst_gpio,ctrl_pdata->index,enable); 
+
+    if ((get_pcb_version() < HW_VERSION__20)||(get_pcb_version() >= HW_VERSION__30)) { /* For Single DSI: Find7 ,liuyan add for N3*/
+        if (enable) {
+		if (!pinfo->panel_power_on){
+    		     //pr_err("%s:lcd power up\n", __func__);
+    		     gpio_set_value((ctrl_pdata->rst_gpio), 0);
+    		     gpio_direction_output(58,0);
+                 #ifdef CONFIG_MACH_OPPO
+                 /* liuyan@Onlinerd.driver, 2014/08/10  Add for 14021 lcd enable */
+                   if(get_pcb_version() >= HW_VERSION__30)
+		            gpio_direction_output(ctrl_pdata->disp_en_gpio76,0);
+                 #endif /*CONFIG_MACH_OPPO*/
+
+    		      mdelay(2);
+    	            //	wmb();	
+                   if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+    			   gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+    		     gpio_direction_output(58,1);
+                 #ifdef CONFIG_MACH_OPPO
+                   /* liuyan@Onlinerd.driver, 2014/08/10  Add for 14021 lcd enable */
+                   if(get_pcb_version() >= HW_VERSION__30)
+		          gpio_direction_output(ctrl_pdata->disp_en_gpio76,1);
+                  #endif /*CONFIG_MACH_OPPO*/
+    	             //	wmb();	
+    	             mdelay(5);
+    	             gpio_set_value((ctrl_pdata->rst_gpio), 1);
+    	             mdelay(10);
+    	             if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
+    		              pr_debug("%s: Panel Not properly turned OFF\n", __func__);
+    		              ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
+    		              pr_debug("%s: Reset panel done\n", __func__);
+    	            }
+        	}
+    	} else {
+    		gpio_set_value((ctrl_pdata->rst_gpio), 0);
+		mdelay(5);
+    		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+    			gpio_direction_output((ctrl_pdata->disp_en_gpio), 0);
+    		gpio_direction_output(58,0);
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/08/10  Add for 14021 lcd enable */
+              if(get_pcb_version() >= HW_VERSION__30)
+		    gpio_set_value(ctrl_pdata->disp_en_gpio76,0);
+#endif /*CONFIG_MACH_OPPO*/
+    	}
+    } else { /* For Dual DSI: Find7S */
+        if(ctrl_pdata->index==1 && get_boot_mode()!= MSM_BOOT_MODE__FACTORY){ /* For Find7S DSI 1 */
+        	if (enable) {
+		   if (!pinfo->panel_power_on){
+        		//pr_err("%s:lcd virtual power up\n", __func__);
+                
+        		if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
+        			pr_err("%s: Panel Not properly turned OFF\n", __func__);
+        			ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
+        			pr_err("%s: Reset panel done\n", __func__);
+        		}
+		   }
+        	} 		
+    	} else { /* For DSI 0 */
+        	if (enable) {
+			if (!pinfo->panel_power_on){
+				if(find7s_lcd_rsp_ic == 1){
+					pr_err("%s rsp ic reset\n",__func__);
+					gpio_set_value((ctrl_pdata->rst_gpio), 0);
+    				gpio_direction_output(58,0);
+					gpio_direction_output(46,0); 
+
+    				mdelay(2);
+    	   
+            		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+    					gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+    				gpio_direction_output(58,1);
+					mdelay(5);
+					gpio_direction_output(46,1); 
+ 
+    	  	   	 	 mdelay(5);
+    	    		gpio_set_value((ctrl_pdata->rst_gpio), 1);
+    	   			mdelay(10);
+				}else{
+					pr_err("%s ntk ic reset\n",__func__);
+					  gpio_direction_output(62,0);               /* GPIO_62 ---> 0 */
+              		  gpio_set_value((ctrl_pdata->rst_gpio), 1); /* GPIO_19 ---> 1 */
+              		  mdelay(5);
+            		  gpio_set_value((ctrl_pdata->rst_gpio), 0); /* GPIO_19 ---> 0 */
+              		  mdelay(10);
+               		 gpio_set_value((ctrl_pdata->rst_gpio), 1); /* GPIO_19 ---> 1 */
+               		 mdelay(10);	
+               		 if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+        					gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+        			gpio_direction_output((ctrl_pdata->disp_en_gpio),1); /* GPIO_58 --->1 */
+					mdelay(2);
+					gpio_direction_output(46,1); 
+        	   	 }
+				 if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
+        		    pr_debug("%s: Panel Not properly turned OFF\n", __func__);
+        		    ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
+        		    pr_debug("%s: Reset panel done\n", __func__);
+        	    }
+		  }
+        	} else {
+				gpio_set_value((ctrl_pdata->rst_gpio), 1); /* GPIO_19 ---> 1 */
+				mdelay(110);
+        		gpio_set_value((ctrl_pdata->rst_gpio), 0); /* GPIO_19 ---> 0 */
+				mdelay(10);
+				//gpio_set_value((ctrl_pdata->rst_gpio), 1); /* GPIO_19 --->1 */
+				//mdelay(10);
+				gpio_direction_output(46,0);   //add for find7s enable display -5v
+				mdelay(2);
+        		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+        			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+                gpio_direction_output((ctrl_pdata->disp_en_gpio),0); /* GPIO_58 ---> 0 */
+				mdelay(10);
+                gpio_direction_output(62,0);               /* GPIO_62 ---> 0 */
+        	}
+    	}
+    }
+    
+	//pr_err("%s: gpio 19=%d", __func__,gpio_get_value(ctrl_pdata->rst_gpio));
+	//pr_err("%s:---\n", __func__);
+	return 0;
+}
+//yanghai modify end
+#endif
 
 static char caset[] = {0x2a, 0x00, 0x00, 0x03, 0x00};	/* DTYPE_DCS_LWRITE */
 static char paset[] = {0x2b, 0x00, 0x00, 0x05, 0x00};	/* DTYPE_DCS_LWRITE */
@@ -368,6 +630,11 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
+#ifdef CONFIG_MACH_OPPO
+	lm3630_bank_a_update_status(bl_level);
+	return;
+#endif
+
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return;
@@ -425,11 +692,37 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 	mipi  = &pdata->panel_info.mipi;
-
+	pr_err("%s: gpio 58=%d,pannel index=%d\n", __func__,gpio_get_value(58),ctrl->index);
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/08/10  Add for print 14021 lcd enable pin */
+	if(get_pcb_version() >= HW_VERSION__30)
+		pr_err("%s: gpio 76=%d\n", __func__,gpio_get_value(ctrl->disp_en_gpio76));
+#endif /*CONFIG_MACH_OPPO*/
 	pr_debug("%s: ctrl=%p ndx=%d\n", __func__, ctrl, ctrl->ndx);
 
 	if (ctrl->on_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->on_cmds);
+
+#ifdef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/25  Add for ESD test */
+	if(ctrl->index==0  && get_boot_mode() != MSM_BOOT_MODE__FACTORY){	
+		if(first_run_reset==1 && !cont_splash_flag)
+
+		{		
+			first_run_reset=0;
+		}
+		else
+		{
+			spin_lock_irqsave(&te_count_lock, flags);    
+			te_count = 0;    
+			spin_unlock_irqrestore(&te_count_lock, flags);    
+			irq_state++;	
+			enable_irq(irq);
+			schedule_delayed_work(&techeck_work, msecs_to_jiffies(5000));
+			
+		}
+	}
+#endif /*CONFIG_MACH_OPPO*/
 
 	pr_debug("%s:-\n", __func__);
 	return 0;
@@ -454,6 +747,16 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds);
+
+#ifdef CONFIG_MACH_OPPO
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/25  Add for ESD test */
+	if(ctrl->index==0 && get_boot_mode() != MSM_BOOT_MODE__FACTORY){
+		cancel_delayed_work_sync(&techeck_work);	 
+		 	mdelay(6);    
+		 	irq_state--;  
+		 	disable_irq(irq);
+	}
+#endif /*CONFIG_MACH_OPPO*/
 
 	pr_debug("%s:-\n", __func__);
 	return 0;
@@ -1265,6 +1568,9 @@ int mdss_dsi_panel_init(struct device_node *node,
 	int rc = 0;
 	static const char *panel_name;
 	struct mdss_panel_info *pinfo;
+#ifdef CONFIG_MACH_OPPO
+	bool cont_splash_enabled;
+#endif
 
 	if (!node || !ctrl_pdata) {
 		pr_err("%s: Invalid arguments\n", __func__);
@@ -1281,6 +1587,46 @@ int mdss_dsi_panel_init(struct device_node *node,
 	else
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
 
+#ifdef CONFIG_MACH_OPPO	
+	/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/22  Add for ESD test*/
+		if (first_run_init==1 && get_boot_mode() != MSM_BOOT_MODE__FACTORY){  //for find7s
+			first_run_init=0;
+	              init_waitqueue_head(&te_waitq);
+			irq = gpio_to_irq(LCD_TE_GPIO); //gpio 28 has configed in mdss_dsi.c	
+			rc = request_threaded_irq(irq, NULL, TE_irq_thread_fn,
+				IRQF_TRIGGER_RISING, "LCD_TE",NULL);	
+			if (rc < 0) {		
+				pr_err("Unable to register IRQ handler\n"); 	
+				return -ENODEV; 
+				}
+			disable_irq(irq);
+			INIT_DELAYED_WORK(&techeck_work, techeck_work_func );	
+			schedule_delayed_work(&techeck_work, msecs_to_jiffies(20000));
+		
+			display_switch.name = "dispswitch";
+		
+			rc = switch_dev_register(&display_switch);
+			if (rc)
+			{
+				pr_err("Unable to register display switch device\n");
+				return rc;
+			}
+		
+			/*dir: /sys/class/mdss_lcd/lcd_control*/	
+			mdss_lcd = class_create(THIS_MODULE,"mdss_lcd");		
+			mdss_lcd->dev_attrs = mdss_lcd_attrs;				
+			device_create(mdss_lcd,dev_lcd,0,NULL,"lcd_control");
+	
+				if(strstr(panel_name,"rsp 1440p video mode dsi panel")){
+					pr_err("this is rsp 1440p video mode dsi panel	 yxr\n");
+					find7s_lcd_rsp_ic = 1;
+				}else if(strstr(panel_name,"rsp 1440p cmd mode dsi panel")){
+					pr_err("this is rsp 1440p cmd mode dsi panel   yxr\n");
+					find7s_lcd_rsp_ic = 1;
+				}
+			}
+#endif /*CONFIG_MACH_OPPO*/
+
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
 		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
@@ -1289,6 +1635,22 @@ int mdss_dsi_panel_init(struct device_node *node,
 
 	if (!cmd_cfg_cont_splash)
 		pinfo->cont_splash_enabled = false;
+	/* OPPO 2013-12-09 yxq Add begin for disable continous display for ftm, rf, wlan mode */
+#ifdef CONFIG_MACH_OPPO
+	
+		if ((MSM_BOOT_MODE__FACTORY == get_boot_mode()) ||
+			(MSM_BOOT_MODE__RF == get_boot_mode()) ||
+			(MSM_BOOT_MODE__WLAN == get_boot_mode()) ||
+			(MSM_BOOT_MODE__MOS == get_boot_mode())) {
+			cont_splash_enabled = false;
+		}
+#endif
+	/* OPPO 2013-12-09 yxq Add end */
+#ifdef CONFIG_MACH_OPPO
+	
+	/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/02/25  Add for ESD test */
+		cont_splash_flag = cont_splash_enabled;
+#endif /*CONFIG_MACH_OPPO*/
 	pr_info("%s: Continuous splash %s", __func__,
 		pinfo->cont_splash_enabled ? "enabled" : "disabled");
 

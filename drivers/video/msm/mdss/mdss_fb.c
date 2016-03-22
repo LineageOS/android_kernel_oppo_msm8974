@@ -53,7 +53,9 @@
 #include <mach/msm_memtypes.h>
 
 #include "mdss_fb.h"
+#include "mdss_dsi.h"
 #include "mdss_mdp_splash_logo.h"
+#include <linux/pcb_version.h>
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -405,6 +407,40 @@ static ssize_t mdss_fb_get_idle_notify(struct device *dev,
 	return ret;
 }
 
+//////////////////////////////////////////////
+
+
+/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef CONFIG_MACH_OPPO
+
+extern struct mdss_dsi_ctrl_pdata *panel_data;
+static ssize_t mdss_mdp_lcdoff_event(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if((get_pcb_version() >= HW_VERSION__20)&&(get_pcb_version() < HW_VERSION__30)){/*liuyan add 30 for N3*/
+		struct mdss_panel_data * pdata;
+		int rc;
+		pr_err("find7s yxr\n");
+		pdata = &panel_data->panel_data;
+		do {
+			pr_err("pdata = %x yxr\n",(u32)pdata);
+			if (pdata->event_handler)
+				rc = pdata->event_handler(pdata, MDSS_EVENT_PANEL_OFF, NULL);
+			pdata = pdata->next;
+		} while (rc == 0 && pdata);
+		return rc;
+	}else{
+		struct fb_info *fbi = dev_get_drvdata(dev);
+    	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+  	    pr_err("%s YXQ mfd=0x%p\n", __func__, mfd);
+		if (!mfd)
+			return -ENODEV;
+		return mdss_fb_send_panel_event(mfd, MDSS_EVENT_PANEL_OFF, NULL);
+	}
+}
+#endif
+/* OPPO 2013-11-26 yxq Add end */
+
 static ssize_t mdss_fb_get_panel_info(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -514,6 +550,11 @@ static int mdss_fb_lpm_enable(struct msm_fb_data_type *mfd, int mode)
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
 static DEVICE_ATTR(show_blank_event, S_IRUGO, mdss_mdp_show_blank_event, NULL);
+/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef CONFIG_MACH_OPPO
+static DEVICE_ATTR(lcdoff, S_IRUGO, mdss_mdp_lcdoff_event, NULL);
+#endif
+/* OPPO 2013-11-26 yxq Add end */
 static DEVICE_ATTR(idle_time, S_IRUGO | S_IWUSR | S_IWGRP,
 	mdss_fb_get_idle_time, mdss_fb_set_idle_time);
 static DEVICE_ATTR(idle_notify, S_IRUGO, mdss_fb_get_idle_notify, NULL);
@@ -526,6 +567,12 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_idle_time.attr,
 	&dev_attr_idle_notify.attr,
 	&dev_attr_msm_fb_panel_info.attr,
+	
+	/* OPPO 2013-11-26 yxq Add begin for suspend the device */
+#ifdef CONFIG_MACH_OPPO
+		&dev_attr_lcdoff.attr,
+#endif
+	/* OPPO 2013-11-26 yxq Add end */
 	NULL,
 };
 
@@ -551,7 +598,14 @@ static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
 static void mdss_fb_shutdown(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
-
+#ifdef CONFIG_MACH_OPPO
+/* liuyan@Onlinerd.driver, 2014/09/26  Add for truly panle will flash before panel off,should close back light */
+       if((get_pcb_version() < HW_VERSION__20)||
+	   ((get_pcb_version() >= HW_VERSION__30)&&
+	   (get_pcb_version() < HW_VERSION__40))){
+                mdss_fb_set_backlight(mfd,0);
+       }
+#endif /*CONFIG_MACH_OPPO*/
 	mfd->shutdown_pending = true;
 	lock_fb_info(mfd->fbi);
 	mdss_fb_release_all(mfd->fbi, true);
@@ -1492,8 +1546,14 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	var->grayscale = 0,	/* No graylevels */
 	var->nonstd = 0,	/* standard pixel format */
 	var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
+#ifndef CONFIG_MACH_OPPO
+/* Xinqin.Yang@PhoneSW.Driver, 2013/12/23  Modify for panel's real size */
 	var->height = -1,	/* height of picture in mm */
 	var->width = -1,	/* width of picture in mm */
+#else /*CONFIG_MACH_OPPO*/
+	var->height = 121,	/* height of picture in mm */
+	var->width = 68,	/* width of picture in mm */
+#endif /*CONFIG_MACH_OPPO*/
 	var->accel_flags = 0,	/* acceleration flags */
 	var->sync = 0,	/* see FB_SYNC_* */
 	var->rotate = 0,	/* angle we rotate counter clockwise */
