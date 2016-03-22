@@ -24,6 +24,15 @@
 #include "msm-pcm-routing-v2.h"
 
 #include "audio_acdb.h"
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add begin for tas2552 f0 fx and impedance test */
+#ifdef CONFIG_MACH_N3
+/* Include for /proc/ support */
+#include <linux/proc_fs.h>
+#include <linux/delay.h>
+#include <linux/syscalls.h>
+#include <linux/module.h>
+#endif
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add end */
 
 enum {
 	AFE_RX_CAL,
@@ -62,6 +71,13 @@ static atomic_t afe_ports_mad_type[SLIMBUS_PORT_LAST - SLIMBUS_0_RX];
 static unsigned long afe_configured_cmd;
 
 static struct afe_ctl this_afe;
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add begin for tas2552 support f0 fx and impedance test */
+#ifdef CONFIG_MACH_N3
+static int opalum_f0_calib_data[2] = {0,0};
+static int opalum_temp_calib_data[2] = {0,0};
+void create_opalum_proc(void);
+#endif
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add end */
 
 #define TIMEOUT_MS 1000
 #define Q6AFE_MAX_VOLUME 0x3FFF
@@ -125,6 +141,34 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			 data->payload_size);
 	if (data->opcode == AFE_PORT_CMDRSP_GET_PARAM_V2) {
 		u8 *payload = data->payload;
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add begin for tas2552 support f0 fx and impedance test */
+#ifdef CONFIG_MACH_N3
+        uint32_t* payload32 = data->payload;
+         pr_err("%s, enter AFE_PORT_CMDRSP_GET_PARAM_V2", __func__);
+    	/* Callback for Opalum communication */
+    	if(payload32[1] == MODULE_ID_OPALUM_FB)
+    	{
+    		switch(payload32[2])
+    		{
+    			case PARAM_ID_OPALUM_GET_F0:
+    				opalum_f0_calib_data[0] = (int32_t)payload32[4];
+    				opalum_f0_calib_data[1] = (int32_t)payload32[5];
+                    atomic_set(&this_afe.state, 0);
+                    wake_up(&this_afe.wait[data->token]);
+    				break;
+    			case PARAM_ID_OPALUM_GET_TEMPERATURE:
+    				opalum_temp_calib_data[0] = (int32_t)payload32[4];
+    				opalum_temp_calib_data[1] = (int32_t)payload32[5];
+                    atomic_set(&this_afe.state, 0);
+                    wake_up(&this_afe.wait[data->token]);
+    				break;
+    			default:
+    				break;
+    		}
+    	} else 
+    	{
+#endif
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add end */
 		if ((data->payload_size < sizeof(this_afe.calib_data))
 			|| !payload || (data->token >= AFE_MAX_PORTS)) {
 			pr_err("%s size %d payload %p token %d\n",
@@ -141,6 +185,9 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		} else
 			atomic_set(&this_afe.state, -1);
 		wake_up(&this_afe.wait[data->token]);
+#ifdef CONFIG_MACH_N3
+       }// OPPO 2014-09-26 John.Xu@Audio.Driver add for tas2552 support f0 fx and impedance test
+#endif
 	} else if (data->payload_size) {
 		uint32_t *payload;
 		uint16_t port_id = 0;
@@ -383,6 +430,230 @@ static int afe_apr_send_pkt(void *data, wait_queue_head_t *wait)
 	return ret;
 }
 
+
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add begin for tas2552 support f0 fx and imdepence */
+#ifdef CONFIG_MACH_N3
+int opalum_afe_set_param(int command)
+{
+	int result = 0;
+	int index = 0;
+	unsigned int port_id = AFE_PORT_ID_SECONDARY_MI2S_RX;
+	unsigned int module_id = 0x00A1AF00;
+	unsigned int param_id = 0x00A1AF05;
+	int size = 0;
+	struct afe_custom_opalum_set_config_t* config = NULL;
+	struct opalum_process_enable_ctrl_t* settings = NULL;
+	
+	index = q6audio_get_port_index(port_id);
+
+	/* Allocate memory for the message */
+	size = sizeof(struct afe_custom_opalum_set_config_t) + sizeof(struct opalum_process_enable_ctrl_t);
+    config = kzalloc(size, GFP_KERNEL);
+	if(config == NULL)
+	{
+		pr_err("%s: Memory allocation failed!\n", __func__);
+		return 1;
+	}
+	
+	settings = (struct opalum_process_enable_ctrl_t*)((u8*)config + sizeof(struct afe_custom_opalum_set_config_t));
+	
+	/* Configure actual parameter settings */
+	settings->enable_flag = 1;
+		
+	/* Set header section */
+	config->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	config->hdr.pkt_size = size;
+	config->hdr.src_svc = APR_SVC_AFE;
+	config->hdr.src_domain = APR_DOMAIN_APPS;
+	config->hdr.src_port = 0;
+	config->hdr.dest_svc = APR_SVC_AFE;
+	config->hdr.dest_domain = APR_DOMAIN_ADSP;
+	config->hdr.dest_port = 0;
+	config->hdr.token = index;
+	config->hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
+	
+	/* Set param section */
+	config->param.port_id = port_id;
+	config->param.payload_size = sizeof(struct afe_port_param_data_v2) + sizeof(struct opalum_process_enable_ctrl_t);
+	config->param.payload_address_lsw = 0;
+	config->param.payload_address_msw = 0;
+	config->param.mem_map_handle = 0;
+	
+	/* Set data section */
+	config->data.module_id = module_id;
+	config->data.param_id = param_id;
+	config->data.param_size = sizeof(struct opalum_process_enable_ctrl_t);
+	config->data.reserved = 0; // Must be set to 0
+	
+	pr_debug("%s: Preparing to send apr packet.\n", __func__);
+	result = afe_apr_send_pkt(config, &this_afe.wait[index]);
+	if(result)
+	{
+		pr_err("%s: Opalum set_param for port %d failed with code %d\n", __func__, port_id, result);
+	}
+	else
+	{
+		pr_debug("%s: Opalum set_param sent packet with param id 0x%08x to module 0x%08x.\n", __func__, param_id, module_id);
+	}
+ 
+    /* Prepare and send second message */
+    port_id = AFE_PORT_ID_SECONDARY_MI2S_TX;
+    module_id = MODULE_ID_OPALUM_FB;
+    param_id = PARAM_ID_OPALUM_SET_F0;
+
+    index = q6audio_get_port_index(port_id);
+    
+    config->hdr.token = index;
+	config->param.port_id = port_id;
+    config->data.module_id = module_id;
+    config->data.param_id = param_id;
+    
+    pr_debug("%s: Preparing to send apr packet.\n", __func__);
+    result = afe_apr_send_pkt(config, &this_afe.wait[index]);
+    if(result)
+    {
+        pr_err("%s: Opalum set_param for port %d failed with code %d\n", __func__, port_id, result);
+    }
+    else
+    {
+        pr_debug("%s: Opalum set_param sent packet with param id 0x%08x to module 0x%08x.\n", __func__, param_id, module_id);
+    }
+
+	kfree(config);
+	return result;
+}
+
+int opalum_afe_get_param(int command)
+{
+	int result = 0;
+	int index = 0;
+	unsigned int port_id = AFE_PORT_ID_SECONDARY_MI2S_TX;
+	unsigned int module_id = MODULE_ID_OPALUM_FB;
+	unsigned int param_id = 0;
+	int size = 0;
+	struct afe_custom_opalum_get_config_t* config = NULL;
+	
+	index = q6audio_get_port_index(port_id);
+	
+	switch(command)
+	{
+		case 0:
+			param_id = PARAM_ID_OPALUM_GET_F0;
+			break;
+		case 1:
+			param_id = PARAM_ID_OPALUM_GET_TEMPERATURE;
+			break;
+		default:
+			break;
+	}
+	
+	/* Allocate memory for the message */
+	size = sizeof(struct afe_custom_opalum_get_config_t);
+    config = kzalloc(size, GFP_KERNEL);
+	if(config == NULL)
+	{
+		pr_err("%s: Memory allocation failed!\n", __func__);
+		return 1;
+	}
+
+    /* 
+        * Set header section 
+        * Note that for get_param this is part of the param struct 
+        */
+    config->param.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+    config->param.hdr.pkt_size = size;
+    config->param.hdr.src_svc = APR_SVC_AFE;
+    config->param.hdr.src_domain = APR_DOMAIN_APPS;
+    config->param.hdr.src_port = 0;
+    config->param.hdr.dest_svc = APR_SVC_AFE;
+    config->param.hdr.dest_domain = APR_DOMAIN_ADSP;
+    config->param.hdr.dest_port = 0;
+    config->param.hdr.token = index;
+    config->param.hdr.opcode = AFE_PORT_CMD_GET_PARAM_V2;
+
+	/* Set param section */
+	config->param.port_id = port_id;
+	config->param.payload_size = sizeof(struct afe_port_param_data_v2) + sizeof(struct opalum_f0_calib_data_t);
+    config->param.payload_address_lsw = 0;
+	config->param.payload_address_msw = 0;
+	config->param.mem_map_handle = 0;
+	config->param.module_id = module_id;
+	config->param.param_id = param_id;
+
+    /* Set data section */
+    config->data.module_id = module_id;
+    config->data.param_id = param_id;
+    config->data.param_size = sizeof(struct opalum_f0_calib_data_t);
+    config->data.reserved = 0; // Must be set to 0
+
+	pr_debug("%s: Preparing to send apr packet.\n", __func__);
+	result = afe_apr_send_pkt(config, &this_afe.wait[index]);
+	if(result)
+	{
+		pr_err("%s: Opalum get_param for port %d failed with code %d\n", __func__, port_id, result);
+	}
+	else
+	{
+		pr_debug("%s: Opalum get_param sent packet with param id 0x%08x to module 0x%08x.\n", __func__, param_id, module_id);
+	}
+	
+	kfree(config);
+	return result;
+}
+
+static int opalum_enable_calibration(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+    opalum_afe_set_param(0);
+
+    return count;
+}
+
+static int opalum_read_f0_calib(char *buf, char **start, off_t offset, int count, int *eof, void *data)
+{
+    int len = 0;
+    opalum_afe_get_param(0);
+	
+	msleep(5); // Wait a bit to make sure the message from the DSP arrives
+    len = sprintf(buf, "\n f0 = %d ref_diff = %d \n", opalum_f0_calib_data[0], opalum_f0_calib_data[1]);
+
+    return len;
+}
+
+static int opalum_read_temp_calib(char *buf, char **start, off_t offset, int count, int *eof, void *data)
+{
+    int len = 0;
+    opalum_afe_get_param(1);
+	
+	msleep(5); // Wait a bit to make sure the message from the DSP arrives
+    len = sprintf(buf, "\n temp_acc = %d counter = %d \n", opalum_temp_calib_data[0], opalum_temp_calib_data[1]);
+
+    return len;
+} 
+
+void create_opalum_proc(void)
+{	
+	static struct proc_dir_entry *proc_opalum_f0_calib_data;
+	static struct proc_dir_entry *proc_opalum_temp_calib_data;
+	
+	proc_opalum_f0_calib_data = create_proc_entry("opalum-f0-calib", 0660, NULL); // John.Xu@2014/10/14 CTS
+	proc_opalum_temp_calib_data = create_proc_entry("opalum-temp-calib", 0660, NULL); // John.Xu@2014/10/14 CTS
+
+	if (!proc_opalum_f0_calib_data || !proc_opalum_temp_calib_data)
+	{
+        pr_info("%s: Cannot create the proc file", __func__);
+        return;
+    }
+	
+	proc_opalum_f0_calib_data->write_proc = opalum_enable_calibration;
+    proc_opalum_f0_calib_data->read_proc = opalum_read_f0_calib;
+	
+	proc_opalum_temp_calib_data->write_proc = opalum_enable_calibration;
+    proc_opalum_temp_calib_data->read_proc = opalum_read_temp_calib;
+}
+EXPORT_SYMBOL(create_opalum_proc); //John.Xu@Audio.Driver Add begin for f0 test
+
+#endif
+/* OPPO 2014-09-26 John.Xu@Audio.Driver Add end */
 static void afe_send_cal_block(int32_t path, u16 port_id)
 {
 	int						result = 0;
@@ -1326,8 +1597,15 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	ret = afe_q6_interface_prepare();
 	if (IS_ERR_VALUE(ret))
 		return ret;
-
-	afe_send_cal(port_id);
+#ifdef CONFIG_MACH_N3
+/* xiaojun.lv@PhoneDpt.AudioDrv, 2014/08/13, modify for 14021 auto feedback */
+    if(port_id!=AFE_PORT_ID_SECONDARY_MI2S_TX) 
+    {
+    	afe_send_cal(port_id);
+    }
+#else
+    	afe_send_cal(port_id);
+#endif
 	afe_send_hw_delay(port_id, rate);
 
 	/* Start SW MAD module */
