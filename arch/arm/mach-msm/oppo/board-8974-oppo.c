@@ -136,7 +136,7 @@ static void __init oppo_config_display(void)
 		return;
 	}
 
-	if (get_pcb_version() >= HW_VERSION__20) {
+	if ((get_pcb_version() >= HW_VERSION__20) && (get_pcb_version() < HW_VERSION__30)) {
 		rc = gpio_request(DISP_LCD_UNK_GPIO, "lcd_unk");
 		if (rc) {
 			pr_err("%s: request DISP_UNK GPIO failed, rc: %d",
