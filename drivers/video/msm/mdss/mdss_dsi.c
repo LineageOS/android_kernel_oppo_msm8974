@@ -1514,6 +1514,23 @@ int dsi_panel_device_register(struct device_node *pan_node,
 		pr_err("%s:%d, Disp_en gpio not specified\n",
 						__func__, __LINE__);
 
+#ifdef CONFIG_MACH_N3
+	    ctrl_pdata->disp_en_gpio76 = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		    "qcom,platform-enable-gpio76", 0);
+	    if (!gpio_is_valid(ctrl_pdata->disp_en_gpio76)) {
+		    pr_err("%s:%d, Disp_en gpio 76 not specified\n",
+						__func__, __LINE__);
+	    } else {
+		    rc = gpio_request(ctrl_pdata->disp_en_gpio76, "disp_enable_gpio76");
+		    if (rc) {
+			    pr_err("request reset gpio 76 failed, rc=%d\n",
+			           rc);
+			    gpio_free(ctrl_pdata->disp_en_gpio76);
+			    return -ENODEV;
+		    }
+	    }
+#endif
+
 	ctrl_pdata->rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 			 "qcom,platform-reset-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio))
