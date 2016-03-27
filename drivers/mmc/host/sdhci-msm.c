@@ -41,8 +41,14 @@
 #include <mach/msm_bus.h>
 #include <mach/mpm.h>
 #include <linux/iopoll.h>
+#include <linux/pcb_version.h>
 
 #include "sdhci-pltfm.h"
+
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+extern int TF_CARD_STATUS;
+#endif /* CONFIG_MACH_OPPO */
 
 enum sdc_mpm_pin_state {
 	SDC_DAT1_DISABLE,
@@ -379,6 +385,8 @@ enum vdd_io_level {
 	 */
 	VDD_IO_SET_LEVEL,
 };
+
+extern unsigned int	mmc_mid;//added by songxh
 
 /* MSM platform specific tuning */
 static inline int msm_dll_poll_ck_out_en(struct sdhci_host *host,
@@ -1203,9 +1211,26 @@ static int sdhci_msm_setup_pad(struct sdhci_msm_pltfm_data *pdata, bool enable)
 static int sdhci_msm_setup_pins(struct sdhci_msm_pltfm_data *pdata, bool enable)
 {
 	int ret = 0;
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	struct sdhci_msm_slot_reg_data *curr_slot;
+
+	curr_slot = pdata->vreg_data;
+	if (!curr_slot) {
+		pr_debug("%s: vreg info unavailable,assuming the slot is powered by always on domain\n",
+			 __func__);
+		goto out;
+	}
+#endif /* CONFIG_MACH_OPPO */
 
 	if (!pdata->pin_data || (pdata->pin_data->cfg_sts == enable))
 		return 0;
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	if(TF_CARD_STATUS==0 && enable && (!curr_slot->vdd_data->is_always_on)){
+		return 0;
+	}
+#endif /* CONFIG_MACH_OPPO */
 	if (pdata->pin_data->is_gpio)
 		ret = sdhci_msm_setup_gpio(pdata, enable);
 	else
@@ -1214,7 +1239,12 @@ static int sdhci_msm_setup_pins(struct sdhci_msm_pltfm_data *pdata, bool enable)
 	if (!ret)
 		pdata->pin_data->cfg_sts = enable;
 
-	return ret;
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+out:
+		return ret;
+#endif /* CONFIG_MACH_OPPO */
+
 }
 
 static int sdhci_msm_dt_get_array(struct device *dev, const char *prop_name,
@@ -2051,6 +2081,21 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 			 __func__);
 		goto out;
 	}
+	
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	if(TF_CARD_STATUS==0 && enable && (!curr_slot->vdd_data->is_always_on)){
+		return 0;
+	}
+#endif /* CONFIG_MACH_OPPO */
+
+#ifdef CONFIG_MACH_N3
+//Zhilong.Zhang@OnlineRd.Driver, 2014/08/09, Add for enable TF ldo
+	if (get_pcb_version() >= HW_VERSION__31 && !curr_slot->vdd_data->is_always_on) {
+		if (!enable)
+			gpio_set_value(75, 0);
+	}
+#endif		
 
 	vreg_table[0] = curr_slot->vdd_data;
 	vreg_table[1] = curr_slot->vdd_io_data;
@@ -2065,6 +2110,15 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 				goto out;
 		}
 	}
+
+#ifdef CONFIG_MACH_N3
+//Zhilong.Zhang@OnlineRd.Driver, 2014/08/09, Add for enable TF ldo
+	if (get_pcb_version() >= HW_VERSION__31 && !curr_slot->vdd_data->is_always_on) {
+		if (enable)
+			gpio_set_value(75, 1);
+	}
+#endif	
+	
 out:
 	return ret;
 }
@@ -2141,10 +2195,26 @@ static int sdhci_msm_set_vdd_io_vol(struct sdhci_msm_pltfm_data *pdata,
 	int ret = 0;
 	int set_level;
 	struct sdhci_msm_reg_data *vdd_io_reg;
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	struct sdhci_msm_slot_reg_data *curr_slot;
+
+	curr_slot = pdata->vreg_data;
+	if (!curr_slot) {
+		pr_debug("%s: vreg info unavailable,assuming the slot is powered by always on domain\n",
+			 __func__);
+		goto out;
+	}
+#endif /* CONFIG_MACH_OPPO */
 
 	if (!pdata->vreg_data)
 		return ret;
-
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	if((TF_CARD_STATUS==0) && (level== VDD_IO_HIGH) && (!curr_slot->vdd_data->is_always_on)){
+		return 0;
+	}
+#endif /* CONFIG_MACH_OPPO */
 	vdd_io_reg = pdata->vreg_data->vdd_io_data;
 	if (vdd_io_reg && vdd_io_reg->is_enabled) {
 		switch (level) {
@@ -2166,7 +2236,11 @@ static int sdhci_msm_set_vdd_io_vol(struct sdhci_msm_pltfm_data *pdata,
 		ret = sdhci_msm_vreg_set_voltage(vdd_io_reg, set_level,
 				set_level);
 	}
-	return ret;
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+out:
+			return ret;
+#endif /* CONFIG_MACH_OPPO */
 }
 
 /*
@@ -3082,6 +3156,18 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "No device tree node\n");
 		goto pltfm_free;
 	}
+
+#ifdef CONFIG_MACH_N3
+//Zhilong.Zhang@OnlineRd.Driver, 2014/08/09, Add for enable TF ldo
+	if (get_pcb_version() >= HW_VERSION__31) {
+		printk(KERN_INFO "enable TF ldo\n");
+		ret = gpio_tlmm_config(GPIO_CFG(75, 0, 1, 1, 0), 0);
+		if (ret) {
+			printk(KERN_ERR "%s:gpio_tlmm_config(%#x)=%d\n", __func__, GPIO_CFG(75, 0, 1, 1, 0), ret);
+		}
+		gpio_set_value(75, 0);
+	}
+#endif	
 
 	/* Setup Clocks */
 

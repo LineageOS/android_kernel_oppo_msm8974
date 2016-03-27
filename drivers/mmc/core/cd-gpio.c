@@ -16,7 +16,15 @@
 #include <linux/mmc/host.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#ifdef CONFIG_MACH_N3
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/24, Add for wakeup the phone when insert or pull out the micro sd card
+#include <linux/pcb_version.h>
+#endif /* CONFIG_MACH_OPPO */
 
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+int TF_CARD_STATUS=1;
+#endif /* CONFIG_MACH_OPPO */
 struct mmc_cd_gpio {
 	unsigned int gpio;
 	bool status;
@@ -42,8 +50,13 @@ static irqreturn_t mmc_cd_gpio_irqt(int irq, void *dev_id)
 	struct mmc_host *host = dev_id;
 	struct mmc_cd_gpio *cd = host->hotplug.handler_priv;
 	int status;
+	
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+	TF_CARD_STATUS = status = mmc_cd_get_status(host);
+#endif /* CONFIG_MACH_OPPO */
 
-	status = mmc_cd_get_status(host);
+	//status = mmc_cd_get_status(host);
 	if (unlikely(status < 0))
 		goto out;
 
@@ -53,6 +66,11 @@ static irqreturn_t mmc_cd_gpio_irqt(int irq, void *dev_id)
 				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
 				"HIGH" : "LOW");
 		cd->status = status;
+
+#ifdef CONFIG_MACH_OPPO
+        //Lycan.Wang@Prd.BasicDrv, 2014-07-10 Add for retry 5 times when new sdcard init error
+        host->detect_change_retry = 5;
+#endif /* CONFIG_MACH_OPPO */
 
 		/* Schedule a card detection after a debounce timeout */
 		mmc_detect_change(host, msecs_to_jiffies(100));
@@ -96,6 +114,19 @@ int mmc_cd_gpio_request(struct mmc_host *host, unsigned int gpio)
 				   cd->label, host);
 	if (ret < 0)
 		goto eirqreq;
+
+#ifdef CONFIG_MACH_N3
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/24, Add for wakeup the phone when insert or pull out the micro sd card
+#if 0
+	if (get_pcb_version() >= HW_VERSION__32) {
+		ret = enable_irq_wake(irq);
+		if(ret < 0)
+		{
+			printk(KERN_ERR "%s, enable_irq_wake %d\n", __func__, ret);
+		}
+	}
+#endif	
+#endif /* CONFIG_MACH_OPPO */	
 
 	return 0;
 
