@@ -44,6 +44,15 @@
 #include "mmc_ops.h"
 #include "sd_ops.h"
 #include "sdio_ops.h"
+#ifdef CONFIG_MACH_OPPO
+//rongchun.Zhang@EXP.BasicDrv, 2014/12/12, Add for hot plug Tf card system crash
+extern void mmc_sd_remove(struct mmc_host *host);
+#endif /* CONFIG_MACH_OPPO */
+
+#ifdef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/19, Add for detect tf card
+#include <linux/gpio.h>
+#endif /* CONFIG_MACH_OPPO */
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmc.h>
@@ -3210,11 +3219,51 @@ int mmc_detect_card_removed(struct mmc_host *host)
 }
 EXPORT_SYMBOL(mmc_detect_card_removed);
 
+#ifndef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/19, Add for detect tf card
+#ifdef CONFIG_MACH_N3
+struct _mmc_cd_gpio {
+	unsigned int gpio;
+	char label[0];
+	bool status;
+};
+
+static int mmc_cd_get_tf_status(struct mmc_host *host)
+{
+	int ret = -ENOSYS;
+	struct _mmc_cd_gpio *cd = host->hotplug.handler_priv;
+
+	if (!cd || !gpio_is_valid(cd->gpio))
+		goto out;
+
+	ret = !gpio_get_value_cansleep(cd->gpio) ^
+		!!(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH);
+out:
+	return ret;
+}
+
+extern void removed_tf_card(struct mmc_host *host);
+
+#endif
+#endif /* CONFIG_MACH_OPPO */
+
 void mmc_rescan(struct work_struct *work)
 {
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
 	bool extend_wakelock = false;
+#ifndef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/19, Add for detect tf card
+#ifdef CONFIG_MACH_N3
+	int status;
+	status = mmc_cd_get_tf_status(host);
+	
+	//printk(KERN_INFO "mmc_rescan, status = %d, host->bus_dead = %d\n", status, host->bus_dead);
+	if(!status && !host->bus_dead) {
+		mmc_schedule_delayed_work(&host->detect, 2 * HZ);
+	}	
+#endif
+#endif /* CONFIG_MACH_OPPO */
 
 	if (host->rescan_disable)
 		return;
@@ -3280,6 +3329,17 @@ void mmc_rescan(struct work_struct *work)
 	mmc_release_host(host);
 	mmc_rpm_release(host, &host->class_dev);
  out:
+#ifndef CONFIG_MACH_OPPO 
+//Zhilong.Zhang@OnlineRd.Driver, 2014/09/19, Add for detect tf card
+#ifdef CONFIG_MACH_N3
+ 	if (mmc_cd_get_tf_status(host) == 0){
+		cancel_delayed_work(&host->detect);
+		if (host && host->card)
+			removed_tf_card(host);
+ 	}
+#endif
+#endif /* CONFIG_MACH_OPPO */
+
 	/* only extend the wakelock, if suspend has not started yet */
 	if (extend_wakelock && !host->rescan_disable)
 		wake_lock_timeout(&host->detect_wake_lock, HZ / 2);
