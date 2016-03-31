@@ -279,11 +279,13 @@ static atomic_t prim_auxpcm_rsc_ref;
 static atomic_t sec_auxpcm_rsc_ref;
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 static int msm8974_oppo_ext_spk;
 static int oppo_enable_spk_gpio = -1;
 static int yda145_ctr_gpio = -1;
 #ifdef CONFIG_MACH_FIND7
 static int yda145_boost_gpio = -1;
+#endif
 #endif
 #endif
 
@@ -334,6 +336,7 @@ static int msm8974_liquid_ext_spk_power_amp_init(void)
 }
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 static int oppo_ext_spk_power_init(void)
 {
 	int ret = 0;
@@ -382,6 +385,7 @@ static int oppo_ext_spk_power_init(void)
 	return 0;
 }
 #endif
+#endif
 
 static void msm8974_liquid_ext_ult_spk_power_amp_enable(u32 on)
 {
@@ -428,6 +432,7 @@ static void msm8974_liquid_ext_spk_power_amp_enable(u32 on)
 }
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 static void msm8974_oppo_ext_spk_power_amp_enable(bool enable)
 {
 	if (enable) {
@@ -448,6 +453,7 @@ static void msm8974_oppo_ext_spk_power_amp_enable(bool enable)
 		gpio_set_value(oppo_enable_spk_gpio, 0);
 	}
 }
+#endif
 #endif
 
 static void msm8974_liquid_docking_irq_work(struct work_struct *work)
@@ -612,6 +618,7 @@ static void msm8974_fluid_ext_us_amp_off(u32 spk)
 }
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 static void msm8974_oppo_ext_spk_power_amp_on(u32 spk)
 {
 	if (spk & (LO_1_SPK_AMP | LO_3_SPK_AMP)) {
@@ -622,6 +629,7 @@ static void msm8974_oppo_ext_spk_power_amp_on(u32 spk)
 	}
 }
 #endif
+#endif
 
 static void msm8974_ext_spk_power_amp_on(u32 spk)
 {
@@ -630,12 +638,14 @@ static void msm8974_ext_spk_power_amp_on(u32 spk)
 	else if (gpio_is_valid(ext_ult_lo_amp_gpio))
 		msm8974_fluid_ext_us_amp_on(spk);
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 	else if (gpio_is_valid(oppo_enable_spk_gpio) &&
 #ifdef CONFIG_MACH_FIND7
 			gpio_is_valid(yda145_boost_gpio) &&
 #endif
 			gpio_is_valid(yda145_ctr_gpio))
 		msm8974_oppo_ext_spk_power_amp_on(spk);
+#endif
 #endif
 }
 
@@ -666,6 +676,7 @@ static void msm8974_liquid_ext_spk_power_amp_off(u32 spk)
 }
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 static void msm8974_oppo_ext_spk_power_amp_off(u32 spk)
 {
 	if (spk & (LO_1_SPK_AMP | LO_3_SPK_AMP)) {
@@ -676,6 +687,7 @@ static void msm8974_oppo_ext_spk_power_amp_off(u32 spk)
 	}
 }
 #endif
+#endif
 
 static void msm8974_ext_spk_power_amp_off(u32 spk)
 {
@@ -684,12 +696,14 @@ static void msm8974_ext_spk_power_amp_off(u32 spk)
 	else if (gpio_is_valid(ext_ult_lo_amp_gpio))
 		msm8974_fluid_ext_us_amp_off(spk);
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 	else if (gpio_is_valid(oppo_enable_spk_gpio) &&
 #ifdef CONFIG_MACH_FIND7
 			gpio_is_valid(yda145_boost_gpio) &&
 #endif
 			gpio_is_valid(yda145_ctr_gpio))
 		msm8974_oppo_ext_spk_power_amp_off(spk);
+#endif
 #endif
 }
 
@@ -1784,12 +1798,14 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	}
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 	err = oppo_ext_spk_power_init();
 	if (err) {
 		pr_err("%s: Oppo external speaker power init failed (%d)\n",
 			__func__, err);
 		return err;
 	}
+#endif
 #endif
 
 	err = msm8974_liquid_init_docking(dapm);
@@ -3576,6 +3592,7 @@ static int __devexit msm8974_asoc_machine_remove(struct platform_device *pdev)
 		gpio_free(ext_ult_lo_amp_gpio);
 
 #ifdef CONFIG_MACH_OPPO
+#ifndef CONFIG_MACH_N3
 	if (gpio_is_valid(oppo_enable_spk_gpio))
 		gpio_free(oppo_enable_spk_gpio);
 
@@ -3585,6 +3602,7 @@ static int __devexit msm8974_asoc_machine_remove(struct platform_device *pdev)
 #ifdef CONFIG_MACH_FIND7
 	if (gpio_is_valid(yda145_boost_gpio))
 		gpio_free(yda145_boost_gpio);
+#endif
 #endif
 #endif
 
