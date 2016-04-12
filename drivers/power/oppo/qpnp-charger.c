@@ -247,6 +247,11 @@
 #define AUTO_CHARGING_BATTERY_TEMP_HYST_FROM_COOL_TO_NORMAL	10
 #define AUTO_CHARGING_BATTERY_TEMP_HYST_FROM_COLD_TO_COOL	30
 
+#ifdef CONFIG_MACH_N3 //sjc
+#undef AUTO_CHARGING_BATT_TEMP_T4
+#define AUTO_CHARGING_BATT_TEMP_T4                            480
+#endif
+
 enum chg_charger_status_type {
 	/* The charger is good      */
 	CHARGER_STATUS_GOOD,
@@ -6565,6 +6570,7 @@ static void qpnp_check_recharging(struct qpnp_chg_chip *chip)
 static void qpnp_check_chg_current(struct qpnp_chg_chip *chip)
 {
 	if (get_pcb_version() < HW_VERSION__20
+			|| get_pcb_version() >= HW_VERSION__30
 			|| qpnp_charger_type_get(chip) != POWER_SUPPLY_TYPE_USB_DCP
 			|| qpnp_get_fast_chg_ing(chip))
 		return;
@@ -6608,11 +6614,19 @@ bool is_alow_fast_chg(struct qpnp_chg_chip *chip)
 	if(chg_type != POWER_SUPPLY_TYPE_USB_DCP)
 		return false;
 #ifndef CONFIG_MACH_FIND7OP
+#ifdef CONFIG_MACH_N3
+	if (temp < 155 || temp > 450)
+		return false;
+	if (temp < 205 && low_temp_full == 1) {
+		return false;
+	}
+#else
 	if(temp < 105)
 		return false;
 	if((temp < 155) && (low_temp_full == 1)){
 		return false;
 	}
+#endif
 #else
 	if(temp < 205)
 		return false;

@@ -33,6 +33,8 @@ int pic_fw_ver_count = sizeof(Pic16F_firmware_data);
 int pic_need_to_up_fw = 0;
 int pic_have_updated = 0;
 
+extern void mcu_en_gpio_set(int value);
+
 static bool pic16f_fw_check(void)
 {
 	unsigned char addr_buf[2] = { 0x02, 0x00 };
@@ -183,6 +185,12 @@ int pic16f_fw_update(bool pull96)
 
 	pr_err("%s pic16F_update_fw,erase data ing.......\n", __func__);
 
+	//pull up GPIO96 to power on MCU1503
+	if(pull96){
+		mcu_en_gpio_set(0);
+		msleep(300);
+	}
+
 update_fw:
 	//erase address 0x200-0x7FF
 	for (i = 0; i < ERASE_COUNT; i++) {
@@ -241,10 +249,25 @@ update_fw:
 
 	pic_have_updated = 1;
 
+	//pull down GPIO96 to power off MCU1503/1508
+	if(pull96) {
+		/*sjc1018 delete*/
+		//gpio_set_value(96,0);
+		mcu_en_gpio_set(1);//sjc0623 add
+		//rc = gpio_tlmm_config(GPIO_CFG(96, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		//if(rc < 0){
+		//	pr_err("%s pull down GPIO96 fail\n",__func__);
+		//}
+	}
+
 	pr_err("%s pic16F update_fw success\n", __func__);
 	return 0;
 
 update_fw_err:
+	if(pull96){
+		mcu_en_gpio_set(1);
+	}
+
 	pr_err("%s pic16F update_fw fail\n", __func__);
 	return 1;
 }
