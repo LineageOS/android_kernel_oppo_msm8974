@@ -26,6 +26,11 @@
 
 &soc {
 	i2c@f9923000 {
+
+		bq27541-battery@55 {
+			microchip,mcu-en-gpio = <&pm8941_gpios 3 0>;
+		};
+
 		pic16f_fastcg@25 {
 			status = "okay";
 			compatible = "microchip,pic16f_fastcg";
@@ -254,4 +259,18 @@
 	qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
 	qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
 	status = "ok";
+};
+
+&pm8941_lsid1 {
+
+	pwm@b500 {
+		qcom,period = <8000>;
+		qcom,duty = <6000>;
+		qcom,mode-select = <0>;	/* Enable PWM signal by default */
+		status = "okay";
+		qcom,pwm {
+			qcom,duty = <4000>;
+			label = "pwm";
+		};
+	};
 };
