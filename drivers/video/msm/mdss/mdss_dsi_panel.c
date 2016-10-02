@@ -33,6 +33,7 @@ DEFINE_LED_TRIGGER(bl_led_trigger);
 
 #ifdef CONFIG_MACH_OPPO
 extern int lm3630_bank_a_update_status(u32 bl_level);
+static bool find7s_lcd_rsp_ic = 0;
 #endif
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -254,6 +255,22 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			return rc;
 		}
 		if (!pinfo->cont_splash_enabled) {
+#ifdef CONFIG_MACH_OPPO
+			if (find7s_lcd_rsp_ic == 1) {
+				gpio_set_value((ctrl_pdata->rst_gpio), 0); //reset-gpio
+				gpio_direction_output(58, 0); //enable-gpio
+				gpio_direction_output(46, 0); //lcd-5v-en-gpio
+				mdelay(2);
+				if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) //enable-gpio
+					gpio_set_value((ctrl_pdata->disp_en_gpio), 1); //enable-gpio
+				gpio_direction_output(58, 1); //enable-gpio
+				mdelay(5);
+				gpio_direction_output(46, 1); //lcd-5v-en-gpio
+				mdelay(5);
+				gpio_set_value((ctrl_pdata->rst_gpio), 1); //reset-gpio
+				mdelay(10);
+			} else {
+#endif
 			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 				gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
 
@@ -271,6 +288,9 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 #ifdef CONFIG_MACH_N3
 			if (gpio_is_valid(ctrl_pdata->disp_en_gpio76)) {
 				gpio_direction_output(ctrl_pdata->disp_en_gpio76, 1);
+			}
+#endif
+#ifdef CONFIG_MACH_OPPO
 			}
 #endif
 		}
@@ -1351,6 +1371,12 @@ int mdss_dsi_panel_init(struct device_node *node,
 						__func__, __LINE__);
 	else
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
+
+#ifdef CONFIG_MACH_OPPO
+	if (strstr(panel_name, "rsp 1440p video mode dsi panel") ||
+	    strstr(panel_name, "rsp 1440p cmd mode dsi panel"))
+		find7s_lcd_rsp_ic = 1;
+#endif
 
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
