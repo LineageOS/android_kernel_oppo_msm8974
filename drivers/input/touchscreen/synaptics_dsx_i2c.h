@@ -282,11 +282,18 @@ struct synaptics_rmi4_data {
 	struct notifier_block fb_notif;
 	atomic_t syna_use_gesture;
 	atomic_t double_tap_enable;
-	atomic_t letter_o_enable;
+	atomic_t right_swipe_enable;
+	atomic_t left_swipe_enable;
 	atomic_t down_swipe_enable;
+	atomic_t up_swipe_enable;
+	atomic_t double_swipe_enable;
+	atomic_t letter_o_enable;
+	atomic_t up_arrow_enable;
+	atomic_t letter_v_enable;
 	atomic_t left_arrow_enable;
 	atomic_t right_arrow_enable;
-	atomic_t letter_v_enable;
+	atomic_t letter_w_enable;
+	atomic_t letter_m_enable;
 	unsigned char glove_enable;  //glove mode
 	unsigned char pdoze_enable;  //pdoze mode
 	unsigned char smartcover_enable;  //smartcover mode
