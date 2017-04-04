@@ -418,7 +418,7 @@ static int ion_handle_put_nolock(struct ion_handle *handle)
 int ion_handle_put(struct ion_handle *handle)
 {
 	struct ion_client *client = handle->client;
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&client->lock);
 	ret = ion_handle_put_nolock(handle);
