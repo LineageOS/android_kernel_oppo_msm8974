@@ -309,9 +309,8 @@ struct binder_buffer {
 };
 
 enum binder_deferred_state {
-	BINDER_DEFERRED_PUT_FILES    = 0x01,
-	BINDER_DEFERRED_FLUSH        = 0x02,
-	BINDER_DEFERRED_RELEASE      = 0x04,
+	BINDER_DEFERRED_FLUSH        = 0x01,
+	BINDER_DEFERRED_RELEASE      = 0x02,
 };
 
 struct binder_proc {
@@ -324,7 +323,6 @@ struct binder_proc {
 	struct vm_area_struct *vma;
 	struct mm_struct *vma_vm_mm;
 	struct task_struct *tsk;
-	struct files_struct *files;
 	struct hlist_node deferred_work_node;
 	int deferred_work;
 	void *buffer;
@@ -397,17 +395,23 @@ struct binder_transaction {
 static void
 binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer);
 
+static struct files_struct *binder_get_files_struct(struct binder_proc *proc)
+{
+	return get_files_struct(proc->tsk);
+}
+
 /*
  * copied from get_unused_fd_flags
  */
 static int task_get_unused_fd_flags(struct binder_proc *proc, int flags)
 {
-	struct files_struct *files = proc->files;
+	struct files_struct *files;
 	int fd, error;
 	struct fdtable *fdt;
 	unsigned long rlim_cur;
 	unsigned long irqs;
 
+	files = binder_get_files_struct(proc);
 	if (files == NULL)
 		return -ESRCH;
 
@@ -461,6 +465,7 @@ repeat:
 
 out:
 	spin_unlock(&files->file_lock);
+	put_files_struct(files);
 	return error;
 }
 
@@ -470,9 +475,10 @@ out:
 static void task_fd_install(
 	struct binder_proc *proc, unsigned int fd, struct file *file)
 {
-	struct files_struct *files = proc->files;
+	struct files_struct *files;
 	struct fdtable *fdt;
 
+	files = binder_get_files_struct(proc);
 	if (files == NULL)
 		return;
 
@@ -481,6 +487,7 @@ static void task_fd_install(
 	BUG_ON(fdt->fd[fd] != NULL);
 	rcu_assign_pointer(fdt->fd[fd], file);
 	spin_unlock(&files->file_lock);
+	put_files_struct(files);
 }
 
 /*
@@ -500,7 +507,7 @@ static void __put_unused_fd(struct files_struct *files, unsigned int fd)
 static long task_close_fd(struct binder_proc *proc, unsigned int fd)
 {
 	struct file *filp;
-	struct files_struct *files = proc->files;
+	struct files_struct *files = binder_get_files_struct(proc);
 	struct fdtable *fdt;
 	int retval;
 
@@ -526,11 +533,13 @@ static long task_close_fd(struct binder_proc *proc, unsigned int fd)
 		     retval == -ERESTARTNOHAND ||
 		     retval == -ERESTART_RESTARTBLOCK))
 		retval = -EINTR;
+	put_files_struct(files);
 
 	return retval;
 
 out_unlock:
 	spin_unlock(&files->file_lock);
+	put_files_struct(files);
 	return -EBADF;
 }
 
@@ -3386,7 +3395,6 @@ static void binder_vma_close(struct vm_area_struct *vma)
 		     (unsigned long)pgprot_val(vma->vm_page_prot));
 	proc->vma = NULL;
 	proc->vma_vm_mm = NULL;
-	binder_defer_work(proc, BINDER_DEFERRED_PUT_FILES);
 }
 
 static int binder_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -3482,7 +3490,6 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	binder_insert_free_buffer(proc, buffer);
 	proc->free_async_space = proc->buffer_size / 2;
 	barrier();
-	proc->files = get_files_struct(current);
 	proc->vma = vma;
 	proc->vma_vm_mm = vma->vm_mm;
 
@@ -3603,7 +3610,6 @@ static void binder_deferred_release(struct binder_proc *proc)
 		active_transactions, page_count;
 
 	BUG_ON(proc->vma);
-	BUG_ON(proc->files);
 
 	hlist_del(&proc->proc_node);
 
@@ -3733,7 +3739,6 @@ static void binder_deferred_release(struct binder_proc *proc)
 static void binder_deferred_func(struct work_struct *work)
 {
 	struct binder_proc *proc;
-	struct files_struct *files;
 
 	int defer;
 	do {
@@ -3751,13 +3756,6 @@ static void binder_deferred_func(struct work_struct *work)
 		}
 		mutex_unlock(&binder_deferred_lock);
 
-		files = NULL;
-		if (defer & BINDER_DEFERRED_PUT_FILES) {
-			files = proc->files;
-			if (files)
-				proc->files = NULL;
-		}
-
 		if (defer & BINDER_DEFERRED_FLUSH)
 			binder_deferred_flush(proc);
 
@@ -3765,8 +3763,6 @@ static void binder_deferred_func(struct work_struct *work)
 			binder_deferred_release(proc); /* frees proc */
 
 		binder_unlock(__func__);
-		if (files)
-			put_files_struct(files);
 	} while (proc);
 }
 static DECLARE_WORK(binder_deferred_work, binder_deferred_func);
