@@ -215,7 +215,9 @@ static struct usb_request *midi_alloc_ep_req(struct usb_ep *ep, unsigned length)
 
 static void midi_free_ep_req(struct usb_ep *ep, struct usb_request *req)
 {
+	WARN_ON(req->buf == NULL);
 	kfree(req->buf);
+	req->buf = NULL;
 	usb_ep_free_request(ep, req);
 }
 
@@ -380,6 +382,9 @@ static int f_midi_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		if (err) {
 			ERROR(midi, "%s queue req: %d\n",
 				    midi->out_ep->name, err);
+			if (req->buf != NULL)
+				midi_free_ep_req(midi->out_ep, req);
+			return err;
 		}
 	}
 
