@@ -39,14 +39,16 @@ static int __init proc_cmdline_init(void)
 		size_t i, len, offset;
 
 		len = strlen(cmd);
-		offset = offset_addr - cmd;
+                if (!strcmp(cmd, "reboot")) {
+			offset = offset_addr - cmd;
 
-		for (i = 1; i < (len - offset); i++) {
-			if (cmd[offset + i] == ' ')
-				break;
+			for (i = 1; i < (len - offset); i++) {
+				if (cmd[offset + i] == ' ')
+					break;
+			}
+
+			memmove(offset_addr, &cmd[offset + i + 1], len - i - offset);
 		}
-
-		memmove(offset_addr, &cmd[offset + i + 1], len - i - offset);
 	}
 
 	proc_create("cmdline", 0, NULL, &cmdline_proc_fops);
