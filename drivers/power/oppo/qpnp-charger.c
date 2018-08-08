@@ -6353,7 +6353,9 @@ static int set_prop_batt_health(struct qpnp_chg_chip *chip, int batt_health)
 }
 
 #define MAX_COUNT	50
-#define SOFT_AICL_VOL	4555
+
+#define SOFT_AICL_VOL	4500
+
 static int soft_aicl(struct qpnp_chg_chip *chip)
 {
 	int i, chg_vol;
