@@ -6353,7 +6353,8 @@ static int set_prop_batt_health(struct qpnp_chg_chip *chip, int batt_health)
 }
 
 #define MAX_COUNT	50
-#define SOFT_AICL_VOL	4555
+#define SOFT_AICL_VOL	4450
+
 static int soft_aicl(struct qpnp_chg_chip *chip)
 {
 	int i, chg_vol;
@@ -6365,7 +6366,7 @@ static int soft_aicl(struct qpnp_chg_chip *chip)
 	qpnp_chg_charge_en(chip, 1);
 	for (i = 0; i < MAX_COUNT / 5; i++) {
 		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < (SOFT_AICL_VOL - 50)) {
+		if (chg_vol < SOFT_AICL_VOL) {
 			chip->aicl_current = 100;
 			pr_info("soft aicl s1:%d\n", chg_vol);
 			qpnp_chg_iusbmax_set(chip, 100);
@@ -6378,7 +6379,7 @@ static int soft_aicl(struct qpnp_chg_chip *chip)
 		if (!chip->usb_present)
 			goto aicl_err;
 		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < (SOFT_AICL_VOL - 50)) {
+		if (chg_vol < SOFT_AICL_VOL) {
 			pr_info("soft aicl s2:%d\n", chg_vol);
 			qpnp_chg_iusbmax_set(chip, 150);
 			chip->aicl_current = 150;
@@ -6414,7 +6415,7 @@ static int soft_aicl(struct qpnp_chg_chip *chip)
 			return 0;
 		}
 		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < SOFT_AICL_VOL + 50) {
+		if (chg_vol < SOFT_AICL_VOL) {
 			qpnp_chg_iusbmax_set(chip, 900);
 			qpnp_chg_iusbmax_set(chip, 900);
 			chip->aicl_current = 900;
@@ -6468,7 +6469,7 @@ static int soft_aicl(struct qpnp_chg_chip *chip)
 		else if (i == 60)
 			qpnp_chg_ibatmax_set(chip, 2112);
 		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < SOFT_AICL_VOL - 30) {
+		if (chg_vol < SOFT_AICL_VOL) {
 #ifdef CONFIG_MACH_FIND7OP
 			qpnp_chg_iusbmax_set(chip, 1200);
 			qpnp_chg_iusbmax_set(chip, 1200);
