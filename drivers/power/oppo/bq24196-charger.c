@@ -27,7 +27,6 @@
 //set charge parameter limit
 #define BQ24196_CHG_IBATMAX_MIN		512
 #define BQ24196_CHG_IBATMAX_MAX		2496
-#define BQ24196_CHG_IBATMAX_HRM		2048
 #define BQ24196_TERM_CURR_MIN		128
 #define BQ24196_TERM_CURR_MAX		2048
 #define BQ24196_CHG_IUSBMAX_MIN		100
@@ -49,7 +48,6 @@ struct bq24196_device_info {
 	struct i2c_client *client;
 	struct task_struct *feedwdt_task;
 	struct mutex i2c_lock;
-	atomic_t suspended;
 };
 
 struct bq24196_device_info *bq24196_di;
@@ -60,10 +58,6 @@ static int bq24196_read_i2c(struct bq24196_device_info *di, u8 reg, u8 length,
 {
 	struct i2c_client *client = di->client;
 	int retval;
-
-	if (atomic_read(&di->suspended) == 1)
-		return -1;
-
 	mutex_lock(&bq24196_di->i2c_lock);
 	retval = i2c_smbus_read_i2c_block_data(client, reg, length, &buf[0]);
 	mutex_unlock(&bq24196_di->i2c_lock);
@@ -78,10 +72,6 @@ static int bq24196_write_i2c(struct bq24196_device_info *di, u8 reg, u8 length,
 {
 	struct i2c_client *client = di->client;
 	int retval;
-
-	if (atomic_read(&di->suspended) == 1)
-		return -1;
-
 	mutex_lock(&bq24196_di->i2c_lock);
 	retval = i2c_smbus_write_i2c_block_data(client, reg, length, &buf[0]);
 	mutex_unlock(&bq24196_di->i2c_lock);
@@ -139,12 +129,6 @@ static int bq24196_ibatmax_set(struct bq24196_device_info *di, int chg_current)
 		value |= 1;
 		return bq24196_chg_masked_write(di, CHARGE_CURRENT_CTRL,
 						BQ24196_IBATMAX_BITS, value, 1);
-	} else if (chg_current == 300) {
-		value = (1536 - BQ24196_CHG_IBATMAX_MIN) / 64;
-		value <<= 2;
-		value |= 1;
-		return bq24196_chg_masked_write(di, CHARGE_CURRENT_CTRL,
-						BQ24196_IBATMAX_BITS, value, 1);
 	} else if (chg_current == 500) {
 		value = (2496 - BQ24196_CHG_IBATMAX_MIN) / 64;
 		value <<= 2;
@@ -158,9 +142,6 @@ static int bq24196_ibatmax_set(struct bq24196_device_info *di, int chg_current)
 			pr_err("bad ibatmA=%d,default to 512mA\n", chg_current);
 		}
 
-		if (chg_current < 1024) {
-			chg_current = BQ24196_CHG_IBATMAX_HRM;
-		}
 
 		value = (chg_current - BQ24196_CHG_IBATMAX_MIN) / 64;
 		value <<= 2;
@@ -554,7 +535,6 @@ static int bq24196_probe(struct i2c_client *client,
 	di->client = client;
 	bq24196_client = client;
 	bq24196_di = di;
-	atomic_set(&di->suspended, 0);
 	mutex_init(&di->i2c_lock);
 	bq24196_hw_config_init(di);
 
@@ -591,35 +571,11 @@ static const struct i2c_device_id bq24196_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, bq24196_id);
 
-static int bq24196_suspend(struct device *dev)
-{
-	struct bq24196_device_info *chip = dev_get_drvdata(dev);
-
-	atomic_set(&chip->suspended, 1);
-
-	return 0;
-}
-
-static int bq24196_resume(struct device *dev)
-{
-	struct bq24196_device_info *chip = dev_get_drvdata(dev);
-
-	atomic_set(&chip->suspended, 0);
-
-	return 0;
-}
-
-static const struct dev_pm_ops bq24196_pm_ops = {
-	.resume = bq24196_resume,
-	.suspend = bq24196_suspend,
-};
-
 static struct i2c_driver bq24196_charger_driver = {
 	.driver = {
 		.name = "bq24196_charger",
 		.owner = THIS_MODULE,
 		.of_match_table = bq24196_match,
-		.pm = &bq24196_pm_ops,
 	},
 	.probe = bq24196_probe,
 	.remove = bq24196_remove,

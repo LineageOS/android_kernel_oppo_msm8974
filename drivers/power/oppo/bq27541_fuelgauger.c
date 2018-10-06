@@ -39,38 +39,12 @@
 #endif
 #include <linux/i2c/bq27520.h> /* use the same platform data as bq27520 */
 #ifdef CONFIG_MACH_OPPO
-#include <linux/of_gpio.h>
 #include <linux/pm.h>
-#include <linux/qpnp/power-on.h>
 #include <linux/random.h>
 #include <linux/rtc.h>
 
 extern char *BQ27541_HMACSHA1_authenticate(char *Message, char *Key,
 		char *result);
-extern int load_soc(void);
-extern void backup_soc_ex(int soc);
-#endif
-
-#ifdef CONFIG_MACH_N3
-static int mcu_en_gpio = 0;
-void mcu_en_gpio_set(int value)
-{
-	if (value) {
-		if (gpio_is_valid(mcu_en_gpio))
-			gpio_set_value(mcu_en_gpio, 0);
-	} else {
-		if (gpio_is_valid(mcu_en_gpio)) {
-			gpio_set_value(mcu_en_gpio, 1);
-			usleep_range(10000, 10000);
-			gpio_set_value(mcu_en_gpio, 0);
-		}
-	}
-}
-#else
-void mcu_en_gpio_set(int value)
-{
-	return;
-}
 #endif
 
 #ifdef CONFIG_PIC1503_FASTCG_OPPO
@@ -147,15 +121,11 @@ extern int pic16f_fw_update(bool pull96);
 
 #ifdef CONFIG_MACH_OPPO
 #define CAPACITY_SALTATE_COUNTER		4
-#define CAPACITY_SALTATE_COUNTER_NOT_CHARGING	7
-#define CAPACITY_SALTATE_COUNTER_60		10
-#define CAPACITY_SALTATE_COUNTER_95		25
-#define CAPACITY_SALTATE_COUNTER_FULL		50
-#define CAPACITY_SALTATE_COUNTER_CHARGING_TERM	10
-#define	SOC_SHUTDOWN_VALID_LIMITS		20
-#define TEN_MINUTES				600
-#define BATT_SOC_INTERVAL			6000
-#define FASTCG_REQUESET_IRQ_INTERVAL		8000
+#define CAPACITY_SALTATE_COUNTER_NOT_CHARGING	20
+#define CAPACITY_SALTATE_COUNTER_80		30
+#define CAPACITY_SALTATE_COUNTER_90		40
+#define CAPACITY_SALTATE_COUNTER_95		60
+#define CAPACITY_SALTATE_COUNTER_FULL		120
 #endif
 
 /* If the system has several batteries we need a different name for each
@@ -200,11 +170,7 @@ struct bq27541_device_info {
 	bool				fast_chg_allow;
 	bool				fast_low_temp_full;
 	int				retry_count;
-	unsigned long			rtc_resume_time;
-	unsigned long			rtc_suspend_time;
 	atomic_t			suspended;
-	struct delayed_work		update_soc_work;
-	struct delayed_work		fastcg_request_irq_work;
 	bool				fast_chg_ing;
 #endif
 };
@@ -285,150 +251,58 @@ static int bq27541_remaining_capacity(struct bq27541_device_info *di)
 	return cap;
 }
 
-static int bq27541_battery_voltage(struct bq27541_device_info *di);
-extern int get_charging_status(void);
-extern int fuelgauge_battery_temp_region_get(void);
 static int bq27541_soc_calibrate(struct bq27541_device_info *di, int soc)
 {
 	union power_supply_propval ret = {0,};
 	unsigned int soc_calib;
 	int counter_temp = 0;
-	static int charging_status = 0;
-	static int charging_status_pre = 0;
-	int soc_load;
-	int soc_temp;
 
 	if (!di->batt_psy) {
 		di->batt_psy = power_supply_get_by_name("battery");
-
-		//get the soc before reboot
-		soc_load = load_soc();
-		if (soc_load == - 1) {
-			//error getting last soc
-			di->soc_pre = soc;
-		} else if (abs(soc - soc_load) > SOC_SHUTDOWN_VALID_LIMITS) {
-			//the battery might have been changed
-			di->soc_pre = soc;
-		} else {
-			//compare the soc and the last soc
-			if(soc_load > soc) {
-				di->soc_pre = soc_load - 1;
-			} else {
-				di->soc_pre = soc_load;
-			}
-		}
-
-		if (!di->batt_psy)
-			return di->soc_pre;
-
-		//store the soc when booting for the first time
-		backup_soc_ex(di->soc_pre);
+		di->soc_pre = soc;
 	}
 
-	soc_temp  = di->soc_pre;
-
 	if (di->batt_psy) {
-		ret.intval = get_charging_status();
-		if (ret.intval == POWER_SUPPLY_STATUS_CHARGING ||
-				ret.intval == POWER_SUPPLY_STATUS_FULL) {
-			charging_status = 1;
-		} else {
-			charging_status = 0;
-		}
-		if (charging_status ^ charging_status_pre) {
-			charging_status_pre = charging_status;
-			di->saltate_counter = 0;
-		}
-		if (charging_status) { // is charging
-			if (ret.intval == POWER_SUPPLY_STATUS_FULL) {
+		di->batt_psy->get_property(di->batt_psy, POWER_SUPPLY_PROP_STATUS, &ret);
+
+		if (ret.intval == POWER_SUPPLY_STATUS_CHARGING
+		    || ret.intval == POWER_SUPPLY_STATUS_FULL) { // is charging
+			if (abs(soc - di->soc_pre) >= 2) {
+				di->saltate_counter++;
+
+				if (di->saltate_counter < CAPACITY_SALTATE_COUNTER)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+			} else
+				di->saltate_counter = 0;
+
+			if (soc > di->soc_pre)
+				soc_calib = di->soc_pre + 1;
+			else if (soc < (di->soc_pre - 2))
+				soc_calib = di->soc_pre - 1;
+			else
 				soc_calib = di->soc_pre;
-				if (di->soc_pre < 100
-				    && (fuelgauge_battery_temp_region_get()
-				    == CV_BATTERY_TEMP_REGION__LITTLE_COOL
-				    || fuelgauge_battery_temp_region_get()
-				    == CV_BATTERY_TEMP_REGION__NORMAL)) {
-					if (di->saltate_counter <
-					 CAPACITY_SALTATE_COUNTER_CHARGING_TERM)
-						di->saltate_counter++;
-					else {
-						soc_calib = di->soc_pre + 1;
-						di->saltate_counter = 0;
-					}
-				}
-			} else {
-				if (soc > di->soc_pre) {
-					di->saltate_counter++;
 
-					if (di->saltate_counter <
-					    CAPACITY_SALTATE_COUNTER)
-						return di->soc_pre;
-					else
-						di->saltate_counter = 0;
-
-					soc_calib = di->soc_pre + 1;
-				} else if (soc < (di->soc_pre - 1)) {
-					di->saltate_counter++;
-
-					if (di->soc_pre == 100)
-						//t>=5min
-						counter_temp =
-						  CAPACITY_SALTATE_COUNTER_FULL;
-					else if (di->soc_pre > 95)
-						//t>=2.5min
-						counter_temp =
-						  CAPACITY_SALTATE_COUNTER_95;
-					else if (di->soc_pre > 60)
-						//t>=1min
-						counter_temp =
-						  CAPACITY_SALTATE_COUNTER_60;
-					else
-						//t>=40sec
-						counter_temp =
-					  CAPACITY_SALTATE_COUNTER_NOT_CHARGING;
-
-					if (di->saltate_counter < counter_temp)
-						return di->soc_pre;
-					else
-						di->saltate_counter = 0;
-
-					soc_calib = di->soc_pre - 1;
-				} else {
-					soc_calib = di->soc_pre;
+			if (ret.intval == POWER_SUPPLY_STATUS_FULL) {
+				if (soc > 94) {
+					soc_calib = 100;
 				}
 			}
 		} else { // not charging
-			if ((abs(soc - di->soc_pre) > 0)
-					|| (di->batt_vol_pre <= 3300 * 1000
-					&& di->batt_vol_pre > 2500 * 1000)) {
+			if ((abs(soc - di->soc_pre) >= 2) || (di->soc_pre > 80)) {
 				di->saltate_counter++;
 
 				if (di->soc_pre == 100)
-					//t>=5min
-					counter_temp =
-					  CAPACITY_SALTATE_COUNTER_FULL;
+					counter_temp = CAPACITY_SALTATE_COUNTER_FULL; //6
 				else if (di->soc_pre > 95)
-					//t>=2.5min
-					counter_temp =
-					  CAPACITY_SALTATE_COUNTER_95;
-				else if (di->soc_pre > 60)
-					//t>=1min
-					counter_temp =
-					  CAPACITY_SALTATE_COUNTER_60;
+					counter_temp = CAPACITY_SALTATE_COUNTER_95; //3
+				else if (di->soc_pre > 90)
+					counter_temp = CAPACITY_SALTATE_COUNTER_90; //2
+				else if (di->soc_pre > 80)
+					counter_temp = CAPACITY_SALTATE_COUNTER_80; //1.5
 				else
-					//t>=40sec
-					counter_temp =
-					  CAPACITY_SALTATE_COUNTER_NOT_CHARGING;
-
-				if (di->batt_vol_pre <= 3300 * 1000 &&
-				    di->batt_vol_pre > 2500 * 1000) {
-					if (bq27541_battery_voltage(di) <=
-					    3300 * 1000 &&
-					    bq27541_battery_voltage(di) >
-					    2500 * 1000) //check again
-						//about 9s
-						counter_temp =
-						  CAPACITY_SALTATE_COUNTER - 1;
-				}
+					counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING; //1
 
 				if (di->saltate_counter < counter_temp)
 					return di->soc_pre;
@@ -439,33 +313,22 @@ static int bq27541_soc_calibrate(struct bq27541_device_info *di, int soc)
 
 			if (soc < di->soc_pre)
 				soc_calib = di->soc_pre - 1;
-			else if (di->batt_vol_pre <= 3300 * 1000 &&
-				 di->batt_vol_pre > 2500 * 1000 &&
-				 di->soc_pre > 0)
-				soc_calib = di->soc_pre - 1;
 			else
 				soc_calib = di->soc_pre;
 		}
 	} else {
 		soc_calib = soc;
 	}
-	if (soc_calib > 100)
+	if (soc >= 100)
 		soc_calib = 100;
 	di->soc_pre = soc_calib;
-
-	if (soc_temp != soc_calib) {
-		//store when soc changed
-		backup_soc_ex(soc_calib);
-		pr_debug("soc:%d, soc_calib:%d\n", soc, soc_calib);
-	}
 	return soc_calib;
 }
 
-static int bq27541_battery_soc(struct bq27541_device_info *di, int time)
+static int bq27541_battery_soc(struct bq27541_device_info *di, bool raw)
 {
 	int ret;
 	int soc = 0;
-	int soc_delt = 0;
 
 	if (atomic_read(&di->suspended) == 1)
 		return di->soc_pre;
@@ -483,16 +346,11 @@ static int bq27541_battery_soc(struct bq27541_device_info *di, int time)
 			return 0;
 	}
 
-	if (time != 0) {
-		if (soc < di->soc_pre) {
-			soc_delt = di->soc_pre - soc;
-			// allow capacity decrease 1% every 10 minutes
-			// when sleeping
-			if (time / TEN_MINUTES < soc_delt)
-				di->soc_pre -= time / TEN_MINUTES;
-			else
-				di->soc_pre = soc;
-		}
+	if (raw) {
+		if (soc > 90)
+			soc += 2;
+		if (soc <= di->soc_pre)
+			di->soc_pre = soc;
 	}
 
 	soc = bq27541_soc_calibrate(di,soc);
@@ -701,13 +559,7 @@ static int bq27541_get_batt_remaining_capacity(void)
 
 static int bq27541_get_battery_soc(void)
 {
-	if (bq27541_di) {
-		if (!bq27541_di->soc_pre)
-			return bq27541_battery_soc(bq27541_di, 0);
-		else
-			return bq27541_di->soc_pre;
-	} else
-		return 50;
+	return bq27541_battery_soc(bq27541_di, false);
 }
 
 static int bq27541_get_average_current(void)
@@ -1053,14 +905,11 @@ static struct platform_device this_device = {
 #define MESSAGE_LEN	20
 #define KEY_LEN		16
 
-#if defined (CONFIG_MACH_FIND7OP) || defined (CONFIG_MACH_N3)
 static bool bq27541_authenticate(struct i2c_client *client)
 {
+#ifdef CONFIG_MACH_FIND7OP
 	return true;
-}
 #else
-static bool bq27541_authenticate(struct i2c_client *client)
-{
 	char recv_buf[MESSAGE_LEN] = {0x0};
 	char send_buf[MESSAGE_LEN] = {0x0};
 	char result[MESSAGE_LEN] = {0x0};
@@ -1114,53 +963,14 @@ static bool bq27541_authenticate(struct i2c_client *client)
 			" ?= result[%d]:0x%x\n",
 			i, send_buf[i], i, recv_buf[i], i, result[i]);
 	return false;
-}
 #endif
+}
 
 #define BATTERY_2700MA	0
 #define BATTERY_3000MA	1
-#define BATTERY_N3_ATL	2
-#define BATTERY_N3_SONY	3
 #define TYPE_INFO_LEN	8
 
-#if defined(CONFIG_MACH_N3)
-static int bq27541_batt_type_detect(struct i2c_client *client)
-{
-	char blockA_cmd_buf[1] = {0x01};
-	char rc = 0;
-	char recv_buf[TYPE_INFO_LEN] = {0x0};
-	int i = 0;
-
-	rc = i2c_smbus_write_i2c_block_data(client, DATAFLASHBLOCK, 1,
-			&blockA_cmd_buf[0]);
-	if (rc < 0) {
-		pr_info("%s i2c write error\n", __func__);
-		return 0;
-	}
-	msleep(30);
-	i2c_smbus_read_i2c_block_data(client, AUTHENDATA, TYPE_INFO_LEN,
-			&recv_buf[0]);
-	if ((recv_buf[0] == 0x01) && (recv_buf[1] == 0x09) &&
-	    (recv_buf[2] == 0x08) && (recv_buf[3] == 0x06))
-		rc = BATTERY_N3_ATL;
-	else if ((recv_buf[0] == 0x19) && (recv_buf[1] == 0x89) &&
-		 (recv_buf[2] == 0x04) && (recv_buf[3] == 0x02))
-		rc = BATTERY_N3_SONY;
-	else {
-		for (i = 0; i < TYPE_INFO_LEN; i++)
-			pr_info("%s error, recv_buf[%d]:0x%x\n", __func__, i,
-				recv_buf[i]);
-		rc = BATTERY_N3_SONY;
-	}
-	pr_info("%s battery_type:%d\n", __func__, rc);
-	return rc;
-}
-#elif defined(CONFIG_MACH_FIND7OP)
-static int bq27541_batt_type_detect(struct i2c_client *client)
-{
-	return BATTERY_3000MA;
-}
-#else
+#ifndef CONFIG_MACH_FIND7OP
 static int bq27541_batt_type_detect(struct i2c_client *client)
 {
 	char blockA_cmd_buf[1] = {0x01};
@@ -1192,7 +1002,12 @@ static int bq27541_batt_type_detect(struct i2c_client *client)
 	pr_info("%s battery_type:%d\n", __func__, rc);
 	return rc;
 }
-#endif
+#else /*CONFIG_MACH_FIND7OP*/
+static int bq27541_batt_type_detect(struct i2c_client *client)
+{
+	return BATTERY_3000MA;
+}
+#endif /*CONFIG_MACH_FIND7OP*/
 #endif
 
 #ifdef CONFIG_PIC1503_FASTCG_OPPO
@@ -1246,7 +1061,6 @@ static void fastcg_work_func(struct work_struct *work)
 				bq27541_di->fast_normal_to_warm = false;
 				bq27541_di->fast_chg_ing = false;
 				gpio_set_value(96, 0);
-				mcu_en_gpio_set(1);
 				retval = gpio_tlmm_config(AP_SWITCH_USB,
 						GPIO_CFG_ENABLE);
 				if (retval)
@@ -1259,19 +1073,6 @@ static void fastcg_work_func(struct work_struct *work)
 	}
 
 	pr_err("%s recv data:0x%x\n", __func__, data);
-
-	if (bq27541_di->batt_psy == NULL) {
-		msleep(2);
-		gpio_tlmm_config(GPIO_CFG(1, 0, GPIO_CFG_INPUT,
-				GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
-		gpio_direction_input(1);
-		retval = request_irq(bq27541_di->irq, irq_rx_handler,
-				IRQF_TRIGGER_RISING, "mcu_data", bq27541_di);
-		if (retval < 0)
-			pr_err("%s request ap rx irq failed.\n", __func__);
-
-		return;
-	}
 
 	if (data == 0x52) {
 		//request fast charging
@@ -1302,7 +1103,6 @@ static void fastcg_work_func(struct work_struct *work)
 		pr_info("%s fastchg stop unexpectly,switch off fastchg\n",
 			__func__);
 		gpio_set_value(96, 0);
-		mcu_en_gpio_set(1);
 		retval = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 		if (retval)
 			pr_err("%s switch usb error %d\n", __func__, retval);
@@ -1316,7 +1116,7 @@ static void fastcg_work_func(struct work_struct *work)
 		volt = bq27541_get_battery_mvolts();
 		temp = bq27541_get_battery_temperature();
 		remain_cap = bq27541_get_batt_remaining_capacity();
-		soc = bq27541_battery_soc(bq27541_di, 0);
+		soc = bq27541_get_battery_soc();
 		current_now = bq27541_get_average_current();
 		pr_err("%s volt:%d,temp:%d,remain_cap:%d,soc:%d,current:%d\n",
 			__func__, volt, temp, remain_cap, soc, current_now);
@@ -1330,21 +1130,18 @@ static void fastcg_work_func(struct work_struct *work)
 		pr_info("%s fastchg full,switch off fastchg,set GPIO96 0\n",
 			__func__);
 		gpio_set_value(96, 0);
-		mcu_en_gpio_set(1);
 		retval = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 		if (retval)
 			pr_err("%s switch usb error %d\n", __func__, retval);
 		del_timer(&bq27541_di->watchdog);
 		ret_info = 0x2;
 	} else if (data == 0x53) {
-		if (bq27541_di->battery_type == BATTERY_3000MA ||
-		    bq27541_di->battery_type == BATTERY_N3_SONY) {
+		if (bq27541_di->battery_type == BATTERY_3000MA) {
 			//if temp:10~20 decigec,vddmax = 4250mv
 			//switch off fast chg
 			pr_info("%s fastchg low temp full,switch off fastchg,"
 				" set GPIO96 0\n", __func__);
 			gpio_set_value(96, 0);
-			mcu_en_gpio_set(1);
 			retval = gpio_tlmm_config(AP_SWITCH_USB,
 					GPIO_CFG_ENABLE);
 			if (retval)
@@ -1357,7 +1154,6 @@ static void fastcg_work_func(struct work_struct *work)
 		//usb bad connected, switch off fast chg
 		pr_info("%s usb bad connect,switch off fastchg\n", __func__);
 		gpio_set_value(96, 0);
-		mcu_en_gpio_set(1);
 		retval = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 		if (retval)
 			pr_err("%s switch usb error %d\n", __func__, retval);
@@ -1368,7 +1164,6 @@ static void fastcg_work_func(struct work_struct *work)
 		pr_info("%s fastchg temp > 45 or < 20,switch off fastchg,"
 			"set GPIO96 0\n", __func__);
 		gpio_set_value(96, 0);
-		mcu_en_gpio_set(1);
 		retval = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 		if (retval)
 			pr_err("%s switch usb error %d\n", __func__, retval);
@@ -1395,7 +1190,6 @@ static void fastcg_work_func(struct work_struct *work)
 		fw_ver_info = 0;
 	} else {
 		gpio_set_value(96, 0);
-		mcu_en_gpio_set(1);
 		retval = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 		if (retval) {
 			pr_err("%s data err(101xxxx) switch usb error %d\n",
@@ -1427,14 +1221,7 @@ static void fastcg_work_func(struct work_struct *work)
 		} else if (i == 1) {
 			gpio_set_value(1, ret_info & 0x1);
 		} else {
-#if defined(CONFIG_MACH_FIND7OP) || defined(CONFIG_MACH_N3)
-			if (bq27541_di->battery_type == BATTERY_N3_SONY)
-				gpio_set_value(1, 0);
-			else
-				gpio_set_value(1, 1);
-#else
 			gpio_set_value(1, bq27541_di->battery_type);
-#endif
 		}
 		gpio_set_value(0, 0);
 		gpio_tlmm_config(AP_TX_EN, GPIO_CFG_ENABLE);
@@ -1459,8 +1246,7 @@ out:
 	}
 
 	if (data == 0x53) {
-		if (bq27541_di->battery_type == BATTERY_3000MA ||
-		    bq27541_di->battery_type == BATTERY_N3_SONY) {
+		if (bq27541_di->battery_type == BATTERY_3000MA) {
 			usleep_range(180000, 180000);
 			bq27541_di->fast_low_temp_full = true;
 			bq27541_di->allow_reading = true;
@@ -1497,8 +1283,7 @@ out:
 		power_supply_changed(bq27541_di->batt_psy);
 
 	if (data == 0x53) {
-		if (bq27541_di->battery_type == BATTERY_3000MA ||
-		    bq27541_di->battery_type == BATTERY_N3_SONY) {
+		if (bq27541_di->battery_type == BATTERY_3000MA) {
 			power_supply_changed(bq27541_di->batt_psy);
 			__pm_relax(&bq27541_di->fastchg_wakeup_source);
 		}
@@ -1528,43 +1313,14 @@ void di_watchdog(unsigned long data)
 	pr_info("%s switch off fastchg\n", __func__);
 
 	gpio_set_value(96, 0);
-	mcu_en_gpio_set(1);
 	ret = gpio_tlmm_config(AP_SWITCH_USB, GPIO_CFG_ENABLE);
 	if (ret)
 		pr_info("%s switch usb error %d\n", __func__, ret);
 	__pm_relax(&bq27541_di->fastchg_wakeup_source);
 }
-
-static void fastcg_request_irq(struct work_struct *work)
-{
-	struct delayed_work *dwork = to_delayed_work(work);
-	struct bq27541_device_info *di = container_of(dwork,
-			struct bq27541_device_info, fastcg_request_irq_work);
-	int retval;
-
-	gpio_direction_input(1);
-	di->irq = gpio_to_irq(1);
-	retval = request_irq(di->irq, irq_rx_handler,
-			IRQF_TRIGGER_RISING, "mcu_data", di);
-	if (retval < 0)
-		pr_err("%s request ap rx irq failed.\n", __func__);
-}
 #endif
 
 #ifdef CONFIG_MACH_OPPO
-static void update_soc(struct work_struct *work)
-{
-	struct delayed_work *dwork = to_delayed_work(work);
-	struct bq27541_device_info *di = container_of(dwork,
-				struct bq27541_device_info, update_soc_work);
-
-	bq27541_battery_soc(di, 0);
-
-	/* update time 6s */
-	schedule_delayed_work(&di->update_soc_work,
-			      round_jiffies_relative(
-			      msecs_to_jiffies(BATT_SOC_INTERVAL)));
-}
 #define MAX_RETRY_COUNT	5
 #endif
 
@@ -1576,27 +1332,6 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	struct bq27541_access_methods *bus;
 	int num;
 	int retval = 0;
-
-#ifdef CONFIG_MACH_N3
-	struct device_node *dev_node = client->dev.of_node;
-	int ret;
-
-	if (dev_node) {
-		mcu_en_gpio = of_get_named_gpio(dev_node,
-				"microchip,mcu-en-gpio", 0);
-	} else {
-		mcu_en_gpio = 0;
-		pr_err("%s: mcu_en_gpio failed\n", __func__);
-	}
-	if (gpio_is_valid(mcu_en_gpio)) {
-		ret = gpio_request(mcu_en_gpio, "mcu_en_gpio");
-		if (ret)
-			pr_err("%s: gpio_request failed for %d ret=%d\n",
-			       __func__, mcu_en_gpio, ret);
-		else
-			gpio_set_value(mcu_en_gpio, 0);
-	}
-#endif
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
@@ -1645,7 +1380,6 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	di->fast_chg_ing = false;
 	di->fast_low_temp_full = false;
 	di->retry_count = MAX_RETRY_COUNT;
-	di->saltate_counter = 0;
 	atomic_set(&di->suspended, 0);
 #endif
 
@@ -1678,11 +1412,6 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&di->hw_config, bq27541_hw_config);
 #ifdef CONFIG_MACH_OPPO
 	schedule_delayed_work(&di->hw_config, 0);
-
-	INIT_DELAYED_WORK(&di->update_soc_work, update_soc);
-	schedule_delayed_work(&di->update_soc_work,
-			      round_jiffies_relative(
-			      msecs_to_jiffies(BATT_SOC_INTERVAL)));
 #ifdef CONFIG_PIC1503_FASTCG_OPPO
 	init_timer(&di->watchdog);
 	di->watchdog.data = (unsigned long)di;
@@ -1693,10 +1422,11 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	gpio_tlmm_config(GPIO_CFG(1, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
 			GPIO_CFG_2MA), 1);
 
-	INIT_DELAYED_WORK(&di->fastcg_request_irq_work, fastcg_request_irq);
-	schedule_delayed_work(&di->fastcg_request_irq_work,
-			      round_jiffies_relative(
-			      msecs_to_jiffies(FASTCG_REQUESET_IRQ_INTERVAL)));
+	gpio_direction_input(1);
+	di->irq = gpio_to_irq(1);
+	retval = request_irq(di->irq, irq_rx_handler, IRQF_TRIGGER_RISING, "mcu_data", di);
+	if (retval < 0)
+		pr_err("%s request ap rx irq failed.\n", __func__);
 #endif
 #else
 	schedule_delayed_work(&di->hw_config, BQ27541_INIT_DELAY);
@@ -1721,10 +1451,6 @@ static int bq27541_battery_remove(struct i2c_client *client)
 {
 	struct bq27541_device_info *di = i2c_get_clientdata(client);
 
-#ifdef CONFIG_MACH_N3
-	if (gpio_is_valid(mcu_en_gpio))
-		gpio_free(mcu_en_gpio);
-#endif
 #ifdef CONFIG_MACH_OPPO
 	qpnp_battery_gauge_unregister(&bq27541_batt_gauge);
 #else
@@ -1746,154 +1472,26 @@ static int bq27541_battery_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_MACH_OPPO
-int msmrtc_alarm_read_time(struct rtc_time *tm)
-{
-	struct rtc_device *alarm_rtc_dev;
-	int ret = 0;
-
-	alarm_rtc_dev = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
-	if (alarm_rtc_dev == NULL) {
-		pr_err("%s: unable to open rtc device (%s)\n",
-			__FILE__, CONFIG_RTC_HCTOSYS_DEVICE);
-		return -EINVAL;
-	}
-
-	ret = rtc_read_time(alarm_rtc_dev, tm);
-	if (ret < 0) {
-		pr_err("%s: Failed to read RTC time\n", __func__);
-		goto err;
-	}
-	return 0;
-err:
-	pr_err("%s: rtc alarm will lost!", __func__);
-	return -1;
-}
-
 static int bq27541_battery_suspend(struct i2c_client *client,
 		pm_message_t message)
 {
-	int ret = 0;
-	struct rtc_time rtc_suspend_rtc_time;
 	struct bq27541_device_info *di = i2c_get_clientdata(client);
 
 	atomic_set(&di->suspended, 1);
-	ret = msmrtc_alarm_read_time(&rtc_suspend_rtc_time);
-	if (ret < 0) {
-		pr_err("%s: Failed to read RTC time\n", __func__);
-		return 0;
-	}
-	rtc_tm_to_time(&rtc_suspend_rtc_time, &di->rtc_suspend_time);
 
 	return 0;
 }
 
-#define RESUME_TIME	1*60
 static int bq27541_battery_resume(struct i2c_client *client)
 {
-	int ret = 0;
-	int suspend_time;
-	struct rtc_time rtc_resume_rtc_time;
 	struct bq27541_device_info *di = i2c_get_clientdata(client);
 
 	atomic_set(&di->suspended, 0);
-	ret = msmrtc_alarm_read_time(&rtc_resume_rtc_time);
-	if (ret < 0) {
-		pr_err("%s: Failed to read RTC time\n", __func__);
-		return 0;
-	}
-	rtc_tm_to_time(&rtc_resume_rtc_time, &di->rtc_resume_time);
-	suspend_time = di->rtc_resume_time - di->rtc_suspend_time;
 
-	/* update pre capacity when sleep time is more than 1 minute */
-	bq27541_battery_soc(bq27541_di, suspend_time);
+	bq27541_battery_soc(bq27541_di, true);
 
 	return 0;
 }
-
-#ifdef CONFIG_MACH_N3
-#define CONTROL_CMD			0x00
-#define CONTROL_STATUS			0x00
-#define SEAL_POLLING_RETRY_LIMIT	100
-#define BQ27541_UNSEAL_KEY		11151986
-#define RESET_SUBCMD			0x0041
-
-static void control_cmd_write(struct bq27541_device_info *di, u16 cmd)
-{
-	int value;
-
-	bq27541_cntl_cmd(di, 0x0041);
-	msleep(10);
-	bq27541_read(CONTROL_STATUS, &value, 0, di);
-	pr_debug("bq27541 CONTROL_STATUS: 0x%x\n", value);
-}
-
-static int sealed(struct bq27541_device_info *di)
-{
-	int value = 0;
-
-	bq27541_cntl_cmd(di,CONTROL_STATUS);
-	msleep(10);
-	bq27541_read(CONTROL_STATUS, &value, 0, di);
-	pr_debug("%s REG_CNTL: 0x%x\n", __func__, value);
-
-	return value & BIT(14);
-}
-
-static int unseal(struct bq27541_device_info *di, u32 key)
-{
-	int i = 0;
-
-	if (!sealed(di))
-		goto out;
-
-	bq27541_cntl_cmd(di, 0x1115);
-	msleep(10);
-	bq27541_cntl_cmd(di, 0x1986);
-	msleep(10);
-	bq27541_cntl_cmd(di, 0xffff);
-	msleep(10);
-	bq27541_cntl_cmd(di, 0xffff);
-	msleep(10);
-
-	while (i < SEAL_POLLING_RETRY_LIMIT) {
-		i++;
-		if (!sealed(di))
-			break;
-		msleep(10);
-	}
-
-out:
-	pr_debug("bq27541 %s: i=%d\n", __FUNCTION__, i);
-
-	if (i == SEAL_POLLING_RETRY_LIMIT) {
-		pr_err("bq27541 %s failed\n", __FUNCTION__);
-		return 0;
-	} else {
-		return 1;
-	}
-}
-
-static void bq27541_reset(struct i2c_client *client)
-{
-	struct bq27541_device_info *di = i2c_get_clientdata(client);
-
-	if (bq27541_get_battery_mvolts() <= 3250 * 1000
-			&& bq27541_get_battery_mvolts() > 2500 * 1000
-			&& bq27541_get_battery_soc() == 0
-			&& bq27541_get_battery_temperature() > 150) {
-		if (!unseal(di, BQ27541_UNSEAL_KEY)) {
-			pr_err("bq27541 unseal fail !\n");
-			return;
-		}
-		pr_debug("bq27541 unseal OK !\n");
-
-		control_cmd_write(di, RESET_SUBCMD);
-	}
-	return;
-}
-#else
-static void bq27541_reset(struct i2c_client *client) {}
-#endif
 
 static const struct of_device_id bq27541_match[] = {
 	{ .compatible = "ti,bq27541-battery" },
@@ -1918,7 +1516,6 @@ static struct i2c_driver bq27541_battery_driver = {
 	.probe		= bq27541_battery_probe,
 	.remove		= bq27541_battery_remove,
 #ifdef CONFIG_MACH_OPPO
-	.shutdown	= bq27541_reset,
 	.suspend	= bq27541_battery_suspend,
 	.resume		= bq27541_battery_resume,
 #endif

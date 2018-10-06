@@ -33,14 +33,11 @@ int pic_fw_ver_count = sizeof(Pic16F_firmware_data);
 int pic_need_to_up_fw = 0;
 int pic_have_updated = 0;
 
-extern void mcu_en_gpio_set(int value);
-
 static bool pic16f_fw_check(void)
 {
 	unsigned char addr_buf[2] = { 0x02, 0x00 };
 	unsigned char data_buf[32] = { 0x0 };
 	int rc, i, j, addr;
-	int fw_line = 0;
 
 	//first:set address
 	rc = i2c_smbus_write_i2c_block_data(pic16F_client, 0x01, 2,
@@ -73,29 +70,14 @@ static bool pic16f_fw_check(void)
 		*/
 
 		//compare recv_buf with Pic16F_firmware_data[] begin
-		if (addr ==
-		    ((Pic16F_firmware_data[fw_line * 34 + 1] << 8) |
-		     Pic16F_firmware_data[fw_line * 34])) {
-			for (j = 0; j < 32; j++) {
-				if (data_buf[j] !=
-				    Pic16F_firmware_data[fw_line * 34 + 2 +
-							 j]) {
-					pr_err
-					    ("%s fail,data_buf[%d]:0x%x != Pic16F_fimware_data[%d]:0x%x\n",
-					     __func__, j, data_buf[j],
-					     (fw_line * 34 + 1 + j),
-					     Pic16F_firmware_data[fw_line * 34 +
-								  1 + j]);
-					return FW_CHECK_FAIL;
-				}
+		for (j = 0; j < 32; j++) {
+			if (addr != Pic16F_firmware_data[i * 34])
+				continue;
+			if (data_buf[j] != Pic16F_firmware_data[i * 34 + 2 + j]) {
+				pr_err("%s fail,data_buf[%d]:0x%x != Pic16F_fimware_data[%d]:0x%x\n", __func__,
+					j, data_buf[j], (i * 34 + 1 + j), Pic16F_firmware_data[i * 34 + 1 + j]);
+				return FW_CHECK_FAIL;
 			}
-			fw_line++;
-		} else {
-			/*
-			pr_err("%s addr dismatch,addr:0x%x,pic_data:0x%x\n",
-			__func__, addr,
-			(Pic16F_firmware_data[fw_line * 34 + 1] << 8) | Pic16F_firmware_data[fw_line * 34]);
-			*/
 		}
 	}
 	pr_info("%s success\n", __func__);
@@ -185,8 +167,14 @@ int pic16f_fw_update(bool pull96)
 
 	pr_err("%s pic16F_update_fw,erase data ing.......\n", __func__);
 
+	//pull up GPIO96 to power on MCU1503/1508
 	if (pull96) {
-		mcu_en_gpio_set(0);
+		gpio_set_value(96,1);
+		rc = gpio_tlmm_config(GPIO_CFG(96, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		if(rc < 0){
+			pr_err("%s pull up GPIO96 fail\n",__func__);
+			return rc;
+		}
 		msleep(300);
 	}
 
@@ -248,16 +236,26 @@ update_fw:
 
 	pic_have_updated = 1;
 
+	//pull down GPIO96 to power off MCU1503/1508
 	if (pull96) {
-		mcu_en_gpio_set(1);
+		gpio_set_value(96,0);
+		rc = gpio_tlmm_config(GPIO_CFG(96, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		if(rc < 0){
+			pr_err("%s pull down GPIO96 fail\n",__func__);
+		}
 	}
 
 	pr_err("%s pic16F update_fw success\n", __func__);
 	return 0;
 
 update_fw_err:
+	//pull down GPIO96 to power off MCU1503/1508
 	if (pull96) {
-		mcu_en_gpio_set(1);
+		gpio_set_value(96,0);
+		rc = gpio_tlmm_config(GPIO_CFG(96, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+		if(rc < 0){
+			pr_err("%s pull down GPIO96 fail\n",__func__);
+		}
 	}
 
 	pr_err("%s pic16F update_fw fail\n", __func__);
