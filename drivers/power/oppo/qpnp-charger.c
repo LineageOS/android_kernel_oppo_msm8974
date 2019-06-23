@@ -3256,9 +3256,9 @@ get_prop_batt_status(struct qpnp_chg_chip *chip)
 static int
 get_prop_current_now(struct qpnp_chg_chip *chip)
 {
-	if (qpnp_batt_gauge && qpnp_batt_gauge->get_average_current)
-		return qpnp_batt_gauge->get_average_current();
-	else {
+	if (qpnp_batt_gauge && qpnp_batt_gauge->get_average_current) {
+		return qpnp_batt_gauge->get_average_current() * 1000;
+	} else {
 		pr_err("qpnp-charger no batt gauge assuming 0mA\n");
 		return 0;
 	}
@@ -4721,9 +4721,9 @@ qpnp_eoc_work(struct work_struct *work)
 	}
 
 	if ((chg_sts == POWER_SUPPLY_CHARGE_TYPE_TRICKLE)
-			|| (chg_sts == POWER_SUPPLY_CHARGE_TYPE_FAST)
-			|| (chg_sts == POWER_SUPPLY_CHARGE_TYPE_TERMINATE)) {
-		ibat_ma = get_prop_current_now(chip);
+					|| (chg_sts == POWER_SUPPLY_CHARGE_TYPE_FAST)
+					|| (chg_sts == POWER_SUPPLY_CHARGE_TYPE_TERMINATE)){
+		ibat_ma = get_prop_current_now(chip) / 1000;
 		vbat_mv = get_prop_battery_voltage_now(chip) / 1000;
 
 		pr_debug("ibat_ma = %d vbat_mv = %d term_current_ma = %d\n",
