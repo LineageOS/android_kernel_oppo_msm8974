@@ -51,8 +51,15 @@ endif
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-x9007.dtb
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ac-pm8941-x9076.dtb
         endif
-        ifeq ($(CONFIG_MACH_FIND7OP),y)
+        ifeq ($(CONFIG_MACH_BACON),y)
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ac-pm8941-a0001.dtb
+        endif
+        ifeq ($(CONFIG_MACH_ONYX),y)
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-e1003_HW_11.dtb
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-e1003_HW_12.dtb
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-e1003_HW_13.dtb
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-e1003_HW_14.dtb
+        dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-e1003_HW_15.dtb
         endif
         ifeq ($(CONFIG_MACH_N3),y)
         dtb-$(CONFIG_ARCH_MSM8974)	+= msm8974pro-ab-pm8941-n520x.dtb

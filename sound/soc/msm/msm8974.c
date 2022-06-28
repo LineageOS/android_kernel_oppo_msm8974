@@ -112,7 +112,7 @@ static const struct soc_enum msm8974_auxpcm_enum[] = {
 		SOC_ENUM_SINGLE_EXT(2, auxpcm_rate_text),
 };
 
-#ifdef CONFIG_MACH_N3
+#if defined(CONFIG_MACH_N3) || defined(CONFIG_MACH_ONYX)
 #define GPIO_SEC_MI2S_MCLK   78
 #define GPIO_SEC_MI2S_SCK    79
 #define GPIO_SEC_MI2S_WS     80
@@ -1504,7 +1504,7 @@ static int msm_slim_0_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-#ifndef CONFIG_MACH_N3
+#if !defined(CONFIG_MACH_N3) && !defined(CONFIG_MACH_ONYX)
 static int msm_slim_4_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					    struct snd_pcm_hw_params *params)
 {
@@ -1561,7 +1561,7 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-#ifdef CONFIG_MACH_N3
+#if defined(CONFIG_MACH_N3) || defined(CONFIG_MACH_ONYX)
 static int msm_be_hw_params_fixup_sec_mi2s(struct snd_soc_pcm_runtime *rtd,
 					   struct snd_pcm_hw_params *params)
 {
@@ -2039,7 +2039,7 @@ static struct snd_soc_ops msm8974_be_ops = {
 	.shutdown = msm8974_snd_shudown,
 };
 
-#ifdef CONFIG_MACH_N3
+#if defined(CONFIG_MACH_N3) || defined(CONFIG_MACH_ONYX)
 static int msm8974_mi2s_free_gpios(void)
 {
 	int i;
@@ -2729,7 +2729,7 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.codec_name = "snd-soc-dummy",
 		.be_id = MSM_FRONTEND_DAI_LSM8,
 	},
-#ifdef CONFIG_MACH_N3
+#if defined(CONFIG_MACH_N3) || defined(CONFIG_MACH_ONYX)
 	{
 		.name = "SEC_MI2S Hostless",
 		.stream_name = "SEC_MI2S Hostless",
@@ -3132,7 +3132,7 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
-#ifdef CONFIG_MACH_N3
+#if defined(CONFIG_MACH_N3) || defined(CONFIG_MACH_ONYX)
 	{
 		.name = LPASS_BE_SEC_MI2S_RX,
 		.stream_name = "Secondary MI2S Playback",

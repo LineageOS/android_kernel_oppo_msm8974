@@ -4887,6 +4887,12 @@ static struct clk_lookup msm_clocks_8974pro_only[] __initdata = {
 	CLK_LOOKUP("cam_clk", camss_mclk1_clk.c, "1.qcom,camera"),
 #endif
 	CLK_LOOKUP("cam_clk", camss_mclk2_clk.c, "2.qcom,camera"),
+#ifdef CONFIG_MACH_ONYX
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "0.qcom,eeprom"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "0.qcom,eeprom"),
+	CLK_LOOKUP("cam_src_clk", mclk2_clk_src.c, "1.qcom,eeprom"),
+	CLK_LOOKUP("cam_clk", camss_mclk2_clk.c, "1.qcom,eeprom"),
+#endif
 };
 
 static struct clk_lookup msm_clocks_8974_only[] __initdata = {
@@ -4959,6 +4965,10 @@ static struct clk_lookup msm_clocks_8974_common[] __initdata = {
 
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9967000.i2c"),
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9966000.spi"),
+#ifdef CONFIG_MACH_ONYX
+	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, ""), //ranfei
+	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9968000.spi"), //ranfei
+#endif
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, ""),
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f995e000.serial"),
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f995d000.uart"),

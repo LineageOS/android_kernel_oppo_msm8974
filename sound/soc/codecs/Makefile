@@ -106,6 +106,9 @@ snd-soc-timpani-objs := timpani.o
 snd-soc-msm-stub-objs := msm_stub.o
 obj-$(CONFIG_SND_SOC_MSM_HDMI_CODEC_RX) := msm_hdmi_codec_rx.o
 
+snd-soc-tfa9890-objs := tfa9890/tfa98xx.o tfa9890/tfa_dsp.o tfa9890/tfa_container.o
+obj-$(CONFIG_SND_SOC_TFA9890) += snd-soc-tfa9890.o
+
 # Amp
 snd-soc-max9877-objs := max9877.o
 snd-soc-tpa6130a2-objs := tpa6130a2.o
