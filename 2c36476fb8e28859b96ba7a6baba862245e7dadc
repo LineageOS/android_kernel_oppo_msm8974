@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8dde3c92_776ba10d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 5911
+      },
+      "writtenOn": "2022-06-28T17:05:35Z",
+      "side": 1,
+      "message": "? should be a non-issue for all current devices, and without this results in a compilation error if only building with CONFIG_QPNP_CHARGER",
+      "revId": "2c36476fb8e28859b96ba7a6baba862245e7dadc",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
