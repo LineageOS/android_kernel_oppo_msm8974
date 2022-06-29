@@ -39,6 +39,30 @@
       },
       "revId": "2c36476fb8e28859b96ba7a6baba862245e7dadc",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "020a798a_97eabe94",
+        "filename": "drivers/power/qpnp-charger.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 4223,
+      "author": {
+        "id": 5911
+      },
+      "writtenOn": "2022-06-29T18:17:13Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "d42b174d_cfbfa9fa",
+      "range": {
+        "startLine": 4223,
+        "startChar": 55,
+        "endLine": 4223,
+        "endChar": 56
+      },
+      "revId": "2c36476fb8e28859b96ba7a6baba862245e7dadc",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
